@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operator Performance Tracker</title>
+<style>
+  :root {
+    --sidebar-bg: #1a1d29;
+    --sidebar-active: #2d3348;
+    --accent: #4f7cff;
+    --accent-dark: #3a5fd9;
+    --bg: #f4f5f9;
+    --card-bg: #ffffff;
+    --border: #e2e4ea;
+    --text-dark: #1a1d29;
+    --text-muted: #6b7280;
+    --danger: #e5484d;
+    --success: #16a34a;
+    --warning: #a16207;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+  body { background: var(--bg); display: flex; min-height: 100vh; color: var(--text-dark); }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar { width: 250px; background: var(--sidebar-bg); color: #fff; flex-shrink: 0; padding: 24px 0; }
+  .sidebar .logo { font-size: 18px; font-weight: 600; padding: 0 24px 24px; border-bottom: 1px solid #2d3348; margin-bottom: 16px; }
+  .sidebar .logo span { color: var(--accent); }
+  .sidebar .nav-item { display: flex; align-items: center; gap: 10px; padding: 12px 24px; cursor: pointer; color: #a8adc0; font-size: 14px; border-left: 3px solid transparent; }
+  .sidebar .nav-item.active { background: var(--sidebar-active); color: #fff; border-left: 3px solid var(--accent); }
+
+  /* ---------- Main content ---------- */
+  .main { flex: 1; padding: 28px 32px; max-width: 100%; overflow-x: auto; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .page-header h1 { font-size: 22px; font-weight: 600; }
+  .counter-badge { background: var(--accent); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 14px; font-weight: 500; }
+
+  /* ---------- Cards & Form ---------- */
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 24px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--text-dark); }
+  
+  .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+  .form-group input, .form-group select { padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; outline: none; }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+  .form-actions { grid-column: span 4; display: flex; gap: 10px; margin-top: 6px; }
+  
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    background-color: #ffffff;
+    align-items: center;
+    width: 100%;
+  }
+  .filter-grid select {
+    width: 100%; padding: 9px 12px; font-size: 13.5px; color: #333333; background-color: #f8f9fa; border: 1px solid var(--border); border-radius: 6px; outline: none; transition: all 0.2s ease; cursor: pointer;
+  }
+  .btn-clear { width: 100%; padding: 9px 12px; font-size: 13.5px; font-weight: 600; color: #fff; background-color: var(--danger); border: none; border-radius: 6px; cursor: pointer; text-align: center; }
+
+  /* Buttons & Tables */
+  .btn { padding: 9px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-cancel { background: #eceef3; color: var(--text-dark); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  thead th { text-align: left; padding: 10px 12px; background: #f8f9fb; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+
+  .avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
+  .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
+  .badge-line { background: #eff6ff; color: #1e40af; }
+  .badge-target { background: #dcfce7; color: #15803d; font-weight: bold; }
+  .eff-cell { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; display: inline-block; }
+
+  .action-btns { display: flex; gap: 6px; }
+  .btn-sm { padding: 5px 12px; font-size: 12.5px; border-radius: 5px; border: none; cursor: pointer; }
+  .btn-edit { background: #eaf1ff; color: var(--accent-dark); }
+  .btn-delete { background: #fdecec; color: var(--danger); }
+
+  .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .status-active { background: #dcfce7; color: #15803d; }
+  .status-inactive { background: #fdecec; color: #e5484d; }
+
+  .perf-master { background-color: #ede9fe; color: #5b21b6; }
+  .perf-expert { background-color: #d1e7dd; color: #0f5132; }
+  .perf-advanced { background-color: #cfe2ff; color: #084298; }
+  .perf-proficient { background-color: #fff3cd; color: #664d03; }
+  .perf-intermediate { background-color: #ffe8cc; color: #b45309; }
+  .perf-beginner { background-color: #f8d7da; color: #842029; }
+
+  .empty-state { text-align: center; padding: 40px; color: var(--text-muted); font-size: 14px; }
+  .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: #fff; font-size: 14px; font-weight: 500; display: none; z-index: 999; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .toast.success { background: var(--success); }
+  .toast.error { background: var(--danger); }
+
+  .module-view { display: none; }
+  .module-view.active-view { display: block; }
+  
+  .prod-hr-input { width: 48px; padding: 6px 4px; text-align: center; border: 1px solid var(--border); border-radius: 4px; font-weight: 600; font-size: 13px; }
+  .prod-calc-input { width: 75px; padding: 6px 8px; text-align: center; border: 1px solid var(--border); border-radius: 4px; font-weight: 600; font-size: 13px; }
+
+  .signage-box { margin: 12px 16px 0; padding: 14px; background: #232840; border-radius: 10px; border: 1px dashed #3a4166; }
+  .signage-box button { width: 100%; background: var(--accent); color: #fff; border: none; padding: 8px; border-radius: 6px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+
+  .user-info-box { margin: 0 24px 20px; padding: 12px 14px; background: #232840; border-radius: 8px; }
+  .user-info-box .user-name { color: #fff; font-size: 13.5px; font-weight: 600; }
+  .user-info-box .user-role { color: var(--accent); font-size: 11.5px; font-weight: 700; letter-spacing: 0.5px; margin-top: 2px; text-transform: uppercase; }
+  .nav-item[data-hidden="true"] { display: none !important; }
+  .btn-sm[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+</style>
+</head>
+<body>
+
+<!-- Side Bar Menu -->
+<div class="sidebar">
+  <div class="logo">DPQSL</div>
+
+  <div id="userInfoBox" class="user-info-box">
+    <div class="user-name" id="userNameLabel">--</div>
+    <div class="user-role" id="userRoleLabel">--</div>
+  </div>
+
+  <div class="nav-item active" id="navOperator" onclick="switchModule('operator')"><span>👤</span> Operator Master List</div>
+  <div class="nav-item" id="navSam" onclick="switchModule('sam')"><span>📊</span> SAM Update</div>
+  <div class="nav-item" id="navAssign" onclick="switchModule('assign')"><span>👔</span> Assign Operator</div>
+  <div class="nav-item" id="navProduction" onclick="switchModule('production')"><span>📝</span> Daily Production Update</div>
+
+  <div class="signage-box">
+    <button type="button" onclick="window.open('dashboard.html', '_blank')">📺 Open Display Dashboard</button>
+  </div>
+
+  <div class="signage-box" style="border-style: solid; background: transparent;">
+    <button type="button" onclick="logout()" style="background: var(--danger);">🚪 Logout</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- MODULE 1: OPERATOR MASTER -->
+  <div id="operatorModule" class="module-view active-view">
+    <div class="page-header">
+      <h1>Operator Master List</h1>
+      <div class="counter-badge">Total Operators: <span id="totalCount">0</span></div>
+    </div>
+    
+    <div class="card" id="operatorFormCard">
+      <h2 id="formTitle">Add New Operator</h2>
+      <div id="operatorFormError" style="display:none; background:#fdecec; color:#c0392b; border:1px solid #f5c6cb; border-radius:6px; padding:10px 14px; font-size:13.5px; margin-bottom:14px; font-weight:500;"></div>
+      <form id="operatorForm" novalidate>
+        <input type="hidden" id="operatorId">
+        <div class="form-grid">
+          <div class="form-group"><label>Office ID No</label><input type="number" id="office_id" placeholder="e.g. 1775"></div>
+          <div class="form-group"><label>Operator Name</label><input type="text" id="operator_name" placeholder="Full name"></div>
+          <div class="form-group"><label>Department</label><select id="department"><option value="">Select</option><option value="Homeware">Homeware</option><option value="Sewing">Sewing</option></select></div>
+          <div class="form-group"><label>Section</label><select id="section"><option value="">Select</option><option value="Sewing">Sewing</option><option value="Finishing">Finishing</option><option value="Cutting">Cutting</option></select></div>
+          <div class="form-group"><label>Line</label>
+            <select id="line_name"><option value="">Select</option>
+              <option value="Line-01">Line-01</option><option value="Line-02">Line-02</option><option value="Line-03">Line-03</option><option value="Line-04">Line-04</option><option value="Line-05">Line-05</option><option value="Line-06">Line-06</option><option value="Line-07">Line-07</option><option value="Line-08">Line-08</option><option value="Line-09">Line-09</option><option value="Line-10">Line-10</option><option value="Line-11">Line-11</option><option value="Line-12">Line-12</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Join Date</label><input type="date" id="join_date"></div>
+          <div class="form-group"><label>Designation</label><input type="text" id="designation" placeholder="e.g. Operator"></div>
+          <div class="form-group"><label>Phone Number</label><input type="text" id="phone_no" placeholder="e.g. 017XXXXXXXX"></div>
+          <div class="form-group" id="statusGroup" style="display:none;"><label>Status</label><select id="status"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+          <div class="form-group">
+            <label>Operator Photo</label>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <img id="operatorFormPhotoPreview" src="/uploads/default.jpg" style="width:45px; height:45px; border-radius:50%; object-fit:cover; border:1px solid var(--border);">
+              <input type="file" id="operatorPhotoFile" accept="image/*" onchange="previewOperatorFormPhoto()">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="submitBtn">Save Operator</button>
+            <button type="button" class="btn btn-cancel" id="cancelBtn" style="display:none;" onclick="resetForm()">Cancel</button>
+          </div>
+        </div>
+      </form>
+    </div>
+    
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2>Master List</h2>
+        <input type="text" id="searchOperator" placeholder="Search ID or Name..." oninput="filterOperators()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+      </div>
+      
+      <div class="filter-grid" style="margin-bottom: 20px;">
+        <select id="filterDept" onchange="filterOperators()"><option value="">All Departments</option><option value="Homeware">Homeware</option><option value="Sewing">Sewing</option></select>
+        <select id="filterSection" onchange="filterOperators()"><option value="">All Sections</option><option value="Sewing">Sewing</option><option value="Finishing">Finishing</option><option value="Cutting">Cutting</option></select>
+        <select id="filterLine" onchange="filterOperators()">
+          <option value="">All Lines</option><option value="Line-01">Line-01</option><option value="Line-02">Line-02</option><option value="Line-03">Line-03</option><option value="Line-04">Line-04</option><option value="Line-05">Line-05</option><option value="Line-06">Line-06</option><option value="Line-07">Line-07</option><option value="Line-08">Line-08</option><option value="Line-09">Line-09</option><option value="Line-10">Line-10</option><option value="Line-11">Line-11</option><option value="Line-12">Line-12</option>
+        </select>
+        <select id="filterStatus" onchange="filterOperators()"><option value="">All Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
+        <select id="filterPerf" onchange="filterOperators()"><option value="">All Performance</option><option value="Beginner">Beginner</option><option value="Intermediate">Intermediate</option><option value="Proficient">Proficient</option><option value="Advanced">Advanced</option><option value="Expert">Expert</option><option value="Master">Master</option></select>
+        <button type="button" class="btn-clear" id="clearFiltersBtn" onclick="resetAllFilters()">Reset Filters</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>SL</th><th>Photo</th><th>ID</th><th>Name</th><th>Dept</th><th>Section</th><th>Line</th><th>Join Date</th><th>Designation</th><th>Phone</th><th>Avg Eff.</th><th>Performance Status</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="operatorTableBody"></tbody>
+        </table>
+        <div id="operatorEmptyState" class="empty-state" style="display:none;">No operators found.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULE 2: SAM UPDATE -->
+  <div id="samModule" class="module-view">
+    <div class="page-header">
+      <h1>SAM Update Configuration</h1>
+      <div class="counter-badge">Total Layouts: <span id="totalSamCount">0</span></div>
+    </div>
+    <div class="card">
+      <h2 id="samFormTitle">Add New Style Layout (SAM)</h2>
+      <form id="samForm" novalidate>
+        <input type="hidden" id="samId">
+        <div class="form-grid">
+          <div class="form-group"><label>Style Name</label><input type="text" id="style_name" placeholder="e.g. T-Shirt 2026"></div>
+          <div class="form-group"><label>Process Name</label><input type="text" id="process_name" placeholder="e.g. Sleeve Attaching"></div>
+          <div class="form-group"><label>SAM</label><input type="number" step="0.01" id="sam_value" placeholder="e.g. 0.45" oninput="calculateLiveTarget()"></div>
+          <div class="form-group"><label>IE Efficiency %</label><input type="number" step="0.1" id="ie_eff_pct" placeholder="e.g. 80" oninput="calculateLiveTarget()"></div>
+          <div class="form-group"><label>Hourly Target (Auto)</label><input type="text" id="hourly_target_preview" readonly placeholder="Auto calculations" style="background: #f3f4f6; font-weight: bold; color: #0369a1;"></div>
+          <div class="form-actions" style="grid-column: span 4;">
+            <button type="submit" class="btn btn-primary" id="samSubmitBtn">Save SAM Record</button>
+            <button type="button" class="btn btn-cancel" id="samCancelBtn" style="display:none;" onclick="resetSamForm()">Cancel</button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2>Style SAM & Target Matrix</h2>
+        <input type="text" id="searchSam" placeholder="Search Style/Process..." oninput="filterSamRecords()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+      </div>
+
+      <div class="filter-grid" style="margin-bottom: 20px;">
+        <select id="filterSamStyle" onchange="filterSamRecords()"><option value="">All Styles</option></select>
+        <select id="filterSamEff" onchange="filterSamRecords()"><option value="">All Efficiency Targets</option><option value="high">>= 80%</option><option value="mid">60% - 79%</option><option value="low">&lt; 60%</option></select>
+        <button type="button" class="btn-clear" onclick="resetSamFilters()">Reset Filters</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>SL</th><th>Style Name</th><th>Process Name</th><th>SAM</th><th>IE EFF %</th><th>Hourly Target</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="samTableBody"></tbody>
+        </table>
+        <div id="samEmptyState" class="empty-state" style="display:none;">No SAM parameters configured yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULE 3: ASSIGN OPERATOR -->
+  <div id="assignModule" class="module-view">
+    <div class="page-header">
+      <h1>Line Operator Assignment</h1>
+      <div class="counter-badge">Assigned Staff: <span id="totalAssignCount">0</span></div>
+    </div>
+    <div class="card">
+      <h2 id="assignFormTitle">Assign Operator to Production Line</h2>
+      <form id="assignForm" novalidate>
+        <input type="hidden" id="assignId">
+        <input type="hidden" id="hidden_sam_value">
+        <input type="hidden" id="hidden_op_name">
+        
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Select Production Line</label>
+            <select id="assign_line">
+              <option value="">Select Line</option><option value="Line-01">Line-01</option><option value="Line-02">Line-02</option><option value="Line-03">Line-03</option><option value="Line-04">Line-04</option><option value="Line-05">Line-05</option><option value="Line-06">Line-06</option><option value="Line-07">Line-07</option><option value="Line-08">Line-08</option><option value="Line-09">Line-09</option><option value="Line-10">Line-10</option><option value="Line-11">Line-11</option><option value="Line-12">Line-12</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Operator Office ID</label>
+            <input type="number" id="assign_office_id" placeholder="Type Operator ID..." oninput="lookupOperatorLive()">
+          </div>
+
+          <div class="op-preview-box" id="opPreviewBox" style="background: #f8f9fb; border: 1px dashed var(--border); border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 14px; grid-column: span 2;">
+            <img id="previewOpImg" src="/uploads/default.jpg" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover;">
+            <div class="op-info-text">
+              <h4 id="previewOpName">No Operator Found</h4>
+              <p id="previewOpId">Please type a valid ID</p>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Select Style</label>
+            <select id="assign_style" onchange="populateProcessesLive()"><option value="">Select Style</option></select>
+          </div>
+          <div class="form-group">
+            <label>Select Process</label>
+            <select id="assign_process" onchange="loadSamParametersLive()"><option value="">Select Process</option></select>
+          </div>
+          <div class="form-group">
+            <label>IE Efficiency % (Editable)</label>
+            <input type="number" step="0.1" id="assign_ie_eff" placeholder="Efficiency" oninput="recalculateAssignTargetLive()">
+          </div>
+          <div class="form-group">
+            <label>Hourly Target (Auto/Custom)</label>
+            <input type="number" id="assign_hourly_target" placeholder="Target Pcs" style="background: #f0fdf4; font-weight: bold; color: #16a34a; border-color: #bbf7d0;">
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="assignSubmitBtn">Add Operator to Line</button>
+            <button type="button" class="btn btn-cancel" id="assignCancelBtn" style="display:none;" onclick="resetAssignForm()">Cancel</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2>Current Line Layout Matrix</h2>
+        <input type="text" id="searchAssign" placeholder="Search ID or Name..." oninput="filterAssignments()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+      </div>
+
+      <div class="filter-grid" style="margin-bottom: 20px;">
+        <select id="filterAssignLine" onchange="filterAssignments()">
+          <option value="">All Lines</option><option value="Line-01">Line-01</option><option value="Line-02">Line-02</option><option value="Line-03">Line-03</option><option value="Line-04">Line-04</option><option value="Line-05">Line-05</option><option value="Line-06">Line-06</option><option value="Line-07">Line-07</option><option value="Line-08">Line-08</option><option value="Line-09">Line-09</option><option value="Line-10">Line-10</option><option value="Line-11">Line-11</option><option value="Line-12">Line-12</option>
+        </select>
+        <select id="filterAssignStyle" onchange="filterAssignments()"><option value="">All Styles</option></select>
+        <button type="button" class="btn-clear" onclick="resetAssignFilters()">Reset Filters</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>SL</th><th>Line No</th><th>Photo</th><th>Office ID</th><th>Operator Name</th><th>Style Name</th><th>Process Name</th><th>IE EFF %</th><th>Hourly Target</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="assignTableBody"></tbody>
+        </table>
+        <div id="assignEmptyState" class="empty-state" style="display:none;">No operators assigned to any lines yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODULE 4: DAILY PRODUCTION UPDATE -->
+  <div id="productionModule" class="module-view">
+    <div class="page-header">
+      <h1>Daily Production Update</h1>
+      <div class="form-group" style="flex-direction: row; align-items: center; gap: 10px;">
+        <label style="white-space: nowrap; font-weight: bold;">Production Date:</label>
+        <input type="date" id="prod_entry_date" onchange="loadProductionLayout()">
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 20px; align-items: stretch; margin-bottom: 24px; flex-wrap: wrap;">
+      <div class="card" style="flex: 1; min-width: 260px; margin-bottom: 0;">
+        <h2>Select Your Responsible Line</h2>
+        <div class="form-grid" style="grid-template-columns: repeat(3, 1fr);">
+          <div class="form-group">
+            <label>Production Line</label>
+            <select id="prod_line_select" onchange="loadProductionLayout()">
+              <option value="">-- Select Line --</option><option value="Line-01">Line-01</option><option value="Line-02">Line-02</option><option value="Line-03">Line-03</option><option value="Line-04">Line-04</option><option value="Line-05">Line-05</option><option value="Line-06">Line-06</option><option value="Line-07">Line-07</option><option value="Line-08">Line-08</option><option value="Line-09">Line-09</option><option value="Line-10">Line-10</option><option value="Line-11">Line-11</option><option value="Line-12">Line-12</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="width: 320px; flex-shrink: 0; margin-bottom: 0; border-left: 4px solid var(--accent);">
+        <h2 style="color: var(--accent); margin-bottom: 10px;">Line Wise Efficiency</h2>
+        <hr style="border: 0; border-top: 1px solid var(--border); margin-bottom: 15px;">
+        <div id="lineEfficiencyContainer">
+          <p style="text-align: center; font-size: 13px; color: var(--text-muted);">No line data loaded.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2>Operator Hourly Production Sheet (08:00 AM - 07:00 PM Tracker)</h2>
+        <input type="text" id="searchProduction" placeholder="Search Operator..." oninput="filterProductionSheet()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+      </div>
+
+      <div class="filter-grid" style="margin-bottom: 20px;">
+        <select id="filterProdEff" onchange="filterProductionSheet()">
+          <option value="">All Efficiencies</option>
+          <option value="excellent">Excellent (>= 95%)</option>
+          <option value="good">Good (75% - 94%)</option>
+          <option value="alert">Alert (&lt; 75%)</option>
+        </select>
+        <button type="button" class="btn-clear" onclick="resetProductionFilters()">Reset Filters</button>
+        <button type="button" class="btn btn-primary" onclick="saveDailyProduction()" style="height: 100%;">Save Production Sheet</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Line</th><th>PIC</th><th>ID</th><th>Name</th><th>Target/Hr</th>
+              <th>08-09</th><th>09-10</th><th>10-11</th><th>11-12</th><th>12-01</th><th>02-03</th><th>03-04</th><th>04-05</th><th>05-06</th><th>06-07</th>
+              <th>Total Pcs</th><th>Defect</th><th>Downtime (Min)</th><th>Calculated Eff %</th>
+            </tr>
+          </thead>
+          <tbody id="productionTableBody"></tbody>
+        </table>
+        <div id="prodEmptyState" class="empty-state">Please select a Date and Line to load the operator list.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<div id="toast" class="toast"></div>
+
+<script src="auth.js"></script>
+<script>
+// Works automatically on localhost AND after deployment (Render etc.) —
+// since server.js serves this page and the API from the same origin.
+const BASE_URL = window.location.origin;
+
+// Operator photos live on Cloudinary now (permanent, survives redeploys).
+// CLOUD_NAME is fetched once from the server so it's never hardcoded here.
+let CLOUD_NAME = '';
+async function loadCloudName() {
+  try {
+    const res = await fetch(`${BASE_URL}/api/public/config`);
+    const result = await res.json();
+    if (result.success) CLOUD_NAME = result.cloudName;
+  } catch (err) { /* falls back to local /uploads below if this fails */ }
+}
+function opPhotoUrl(officeId) {
+  if (CLOUD_NAME) return `https://res.cloudinary.com/${CLOUD_NAME}/image/upload/dpqsl_operators/${officeId}.jpg`;
+  return `${BASE_URL}/uploads/${officeId}.jpg`;
+}
+
+// Uploads the selected photo file (if any) for the given office_id.
+// Called right after an operator is successfully saved/updated.
+async function uploadOperatorPhotoIfSelected(officeId) {
+  const fileInput = document.getElementById('operatorPhotoFile');
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
+
+  const formData = new FormData();
+  formData.append('photo', fileInput.files[0]);
+  formData.append('office_id', officeId);
+
+  try {
+    await apiFetch(`${BASE_URL}/api/upload-photo`, { method: 'POST', body: formData });
+  } catch (err) {
+    showToast('Operator saved, but photo upload failed: ' + err.message, 'error');
+  } finally {
+    fileInput.value = '';
+  }
+}
+
+let allOperators = [];
+let allSams = [];
+let allAssignments = [];
+let isEditMode = false;
+let isSamEditMode = false;
+let isAssignEditMode = false;
+
+function showToast(message, type = 'success') {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className = `toast ${type}`;
+  toast.style.display = 'block';
+  setTimeout(() => { toast.style.display = 'none'; }, 3000);
+}
+
+function getPerformanceStatus(eff) {
+  if (eff >= 80) return { label: 'Master', class: 'perf-master' };
+  if (eff >= 70) return { label: 'Expert', class: 'perf-expert' };
+  if (eff >= 60) return { label: 'Advanced', class: 'perf-advanced' };
+  if (eff >= 50) return { label: 'Proficient', class: 'perf-proficient' };
+  if (eff >= 30) return { label: 'Intermediate', class: 'perf-intermediate' };
+  return { label: 'Beginner', class: 'perf-beginner' };
+}
+
+function switchModule(moduleName) {
+  if (!isModuleAllowed(getUser(), moduleName)) {
+    showToast('You do not have permission to access this module.', 'error');
+    return;
+  }
+  document.querySelectorAll('.module-view').forEach(view => view.classList.remove('active-view'));
+  document.querySelectorAll('.sidebar .nav-item').forEach(item => item.classList.remove('active'));
+  
+  if(moduleName === 'operator') {
+    document.getElementById('operatorModule').classList.add('active-view');
+    document.getElementById('navOperator').classList.add('active');
+    loadOperators();
+  } else if(moduleName === 'sam') {
+    document.getElementById('samModule').classList.add('active-view');
+    document.getElementById('navSam').classList.add('active');
+    loadSamRecords();
+  } else if(moduleName === 'assign') {
+    document.getElementById('assignModule').classList.add('active-view');
+    document.getElementById('navAssign').classList.add('active');
+    initAssignModule();
+  } else if(moduleName === 'production') {
+    document.getElementById('productionModule').classList.add('active-view');
+    document.getElementById('navProduction').classList.add('active');
+    document.getElementById('prod_entry_date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('productionTableBody').innerHTML = '';
+    document.getElementById('lineEfficiencyContainer').innerHTML = '<p style="text-align:center; font-size:13px; color:var(--text-muted);">Select a line.</p>';
+    document.getElementById('prodEmptyState').style.display = 'block';
+  }
+}
+
+// ---------------- OPERATOR MASTER ----------------
+function filterOperators() {
+  const searchQuery = document.getElementById('searchOperator').value.trim().toLowerCase();
+  const selectedDept = document.getElementById('filterDept').value;
+  const selectedSection = document.getElementById('filterSection').value;
+  const selectedLine = document.getElementById('filterLine').value;
+  const selectedStatus = document.getElementById('filterStatus').value;
+  const selectedPerf = document.getElementById('filterPerf').value;
+
+  const filtered = allOperators.filter(op => {
+    const matchesSearch = op.operator_name.toLowerCase().includes(searchQuery) || op.office_id.toString().includes(searchQuery);
+    const matchesDept = selectedDept === "" || op.department === selectedDept;
+    const matchesSection = selectedSection === "" || op.section === selectedSection;
+    const matchesLine = selectedLine === "" || op.line_name === selectedLine;
+    const matchesStatus = selectedStatus === "" || (op.status || 'Active') === selectedStatus;
+    
+    let matchesPerf = true;
+    if (selectedPerf !== "") {
+      const eff = parseFloat(op.avg_efficiency) || 0;
+      matchesPerf = getPerformanceStatus(eff).label === selectedPerf;
+    }
+    return matchesSearch && matchesDept && matchesSection && matchesLine && matchesStatus && matchesPerf;
+  });
+  renderTable(filtered);
+}
+
+function resetAllFilters() {
+  document.getElementById('searchOperator').value = ''; document.getElementById('filterDept').value = '';
+  document.getElementById('filterSection').value = ''; document.getElementById('filterLine').value = '';
+  document.getElementById('filterStatus').value = ''; document.getElementById('filterPerf').value = '';
+  renderTable(allOperators); showToast('Filters cleared!');
+}
+
+// ---------------- SAM UPDATE ----------------
+function filterSamRecords() {
+  const searchQuery = document.getElementById('searchSam').value.trim().toLowerCase();
+  const selectedStyle = document.getElementById('filterSamStyle').value;
+  const selectedEff = document.getElementById('filterSamEff').value;
+
+  const filtered = allSams.filter(sam => {
+    const matchesSearch = sam.style_name.toLowerCase().includes(searchQuery) || sam.process_name.toLowerCase().includes(searchQuery);
+    const matchesStyle = selectedStyle === "" || sam.style_name === selectedStyle;
+    let matchesEff = true;
+    if (selectedEff === 'high') matchesEff = sam.ie_eff_pct >= 80;
+    else if (selectedEff === 'mid') matchesEff = sam.ie_eff_pct >= 60 && sam.ie_eff_pct < 80;
+    else if (selectedEff === 'low') matchesEff = sam.ie_eff_pct < 60;
+    return matchesSearch && matchesStyle && matchesEff;
+  });
+  renderSamTable(filtered);
+}
+
+function resetSamFilters() {
+  document.getElementById('searchSam').value = ''; document.getElementById('filterSamStyle').value = '';
+  document.getElementById('filterSamEff').value = ''; renderSamTable(allSams);
+}
+
+function updateSamFilterDropdowns() {
+  const styleSelect = document.getElementById('filterSamStyle');
+  styleSelect.innerHTML = '<option value="">All Styles</option>';
+  [...new Set(allSams.map(s => s.style_name))].forEach(style => {
+    styleSelect.innerHTML += `<option value="${style}">${style}</option>`;
+  });
+}
+
+// ---------------- ASSIGN OPERATOR ----------------
+function filterAssignments() {
+  const searchQuery = document.getElementById('searchAssign').value.trim().toLowerCase();
+  const selectedLine = document.getElementById('filterAssignLine').value;
+  const selectedStyle = document.getElementById('filterAssignStyle').value;
+
+  const filtered = allAssignments.filter(row => {
+    const matchesSearch = row.operator_name.toLowerCase().includes(searchQuery) || row.office_id.toString().includes(searchQuery);
+    const matchesLine = selectedLine === "" || row.line_name === selectedLine;
+    const matchesStyle = selectedStyle === "" || row.style_name === selectedStyle;
+    return matchesSearch && matchesLine && matchesStyle;
+  });
+  renderAssignTable(filtered);
+}
+
+function resetAssignFilters() {
+  document.getElementById('searchAssign').value = ''; document.getElementById('filterAssignLine').value = '';
+  document.getElementById('filterAssignStyle').value = ''; renderAssignTable(allAssignments);
+}
+
+function updateAssignFilterDropdowns() {
+  const styleSelect = document.getElementById('filterAssignStyle');
+  styleSelect.innerHTML = '<option value="">All Styles</option>';
+  [...new Set(allAssignments.map(s => s.style_name))].forEach(style => {
+    styleSelect.innerHTML += `<option value="${style}">${style}</option>`;
+  });
+}
+
+// ---------------- DAILY PRODUCTION SHEET ----------------
+function filterProductionSheet() {
+  const searchQuery = document.getElementById('searchProduction').value.trim().toLowerCase();
+  const selectedEff = document.getElementById('filterProdEff').value;
+
+  document.querySelectorAll('#productionTableBody tr').forEach(tr => {
+    const name = tr.cells[3].textContent.toLowerCase();
+    const id = tr.getAttribute('data-office-id');
+    const effPct = parseInt(tr.querySelector('.eff-cell').textContent, 10) || 0;
+
+    const matchesSearch = name.includes(searchQuery) || id.includes(searchQuery);
+    let matchesEff = true;
+    if (selectedEff === 'excellent') matchesEff = effPct >= 95;
+    else if (selectedEff === 'good') matchesEff = effPct >= 75 && effPct < 95;
+    else if (selectedEff === 'alert') matchesEff = effPct < 75;
+
+    tr.style.display = (matchesSearch && matchesEff) ? '' : 'none';
+  });
+}
+
+function resetProductionFilters() {
+  document.getElementById('searchProduction').value = ''; document.getElementById('filterProdEff').value = '';
+  document.querySelectorAll('#productionTableBody tr').forEach(tr => tr.style.display = '');
+}
+
+async function loadProductionLayout() {
+  const selectedLine = document.getElementById('prod_line_select').value;
+  const selectedDate = document.getElementById('prod_entry_date').value;
+  const tbody = document.getElementById('productionTableBody');
+  const empty = document.getElementById('prodEmptyState');
+
+  if(!selectedLine || !selectedDate) {
+    tbody.innerHTML = ''; empty.style.display = 'block';
+    document.getElementById('lineEfficiencyContainer').innerHTML = '<p style="text-align:center; font-size:13px; color:var(--text-muted);">Select a line.</p>';
+    return;
+  }
+
+  try {
+    const resAssign = await apiFetch(`${BASE_URL}/api/assignments`);
+    const resultAssign = await resAssign.json();
+    const resProd = await apiFetch(`${BASE_URL}/api/production-records?date=${selectedDate}&line=${selectedLine}`);
+    const resultProd = await resProd.json();
+    
+    const savedRecordsMap = {};
+    if(resultProd.success && resultProd.data) {
+      resultProd.data.forEach(rec => { savedRecordsMap[rec.office_id] = rec; });
+    }
+
+    if(resultAssign.success) {
+      const lineOperators = resultAssign.data.filter(op => op.line_name === selectedLine);
+      if(lineOperators.length === 0) {
+        tbody.innerHTML = ''; empty.textContent = `No active operators assigned to ${selectedLine}.`;
+        empty.style.display = 'block';
+        document.getElementById('lineEfficiencyContainer').innerHTML = '<p style="text-align:center; font-size:13px; color:var(--text-muted);">No assigned layout.</p>';
+        return;
+      }
+      
+      empty.style.display = 'none';
+      tbody.innerHTML = lineOperators.map((row) => {
+        const target = row.hourly_target || 0;
+        const samVal = row.sam_value || 0.0;
+        const saved = savedRecordsMap[row.office_id] || {};
+        const getHourVal = (val) => (val === 0 || val === undefined || val === null) ? '' : val;
+        
+        return `
+          <tr data-office-id="${row.office_id}" data-target="${target}" data-sam="${samVal}" data-line="${row.line_name}">
+            <td><span class="badge badge-line">${row.line_name}</span></td>
+            <td><img class="avatar" src="${opPhotoUrl(row.office_id)}" onerror="this.src='${BASE_URL}/uploads/default.jpg'"></td>
+            <td><strong>${row.office_id}</strong></td>
+            <td>${row.operator_name}</td>
+            <td><span class="badge badge-target">${target} Pcs</span></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h1" value="${getHourVal(saved.h1)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h2" value="${getHourVal(saved.h2)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h3" value="${getHourVal(saved.h3)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h4" value="${getHourVal(saved.h4)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h5" value="${getHourVal(saved.h5)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h6" value="${getHourVal(saved.h6)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h7" value="${getHourVal(saved.h7)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h8" value="${getHourVal(saved.h8)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h9" value="${getHourVal(saved.h9)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-hr-input" data-hr="h10" value="${getHourVal(saved.h10)}" min="0" oninput="calculateRowPerformance(this)"></td>
+            <td><span class="total-prod-cell" style="font-weight:bold; font-size:14px; color:var(--accent-dark);">0</span></td>
+            <td><input type="number" class="prod-calc-input total-defect" value="${saved.total_defect !== undefined ? saved.total_defect : ''}" min="0" placeholder="0" oninput="calculateRowPerformance(this)"></td>
+            <td><input type="number" class="prod-calc-input downtime-minute" value="${saved.downtime_minute !== undefined ? saved.downtime_minute : ''}" min="0" placeholder="0" oninput="calculateRowPerformance(this)"></td>
+            <td><span class="eff-cell text-badge text-secondary" style="background:#f3f4f6;">0%</span></td>
+          </tr>
+        `;
+      }).join('');
+
+      tbody.querySelectorAll('tr').forEach(tr => {
+        const inp = tr.querySelector('.prod-hr-input');
+        if(inp) calculateRowPerformance(inp);
+      });
+    }
+  } catch (err) { showToast('Error sync production layout', 'error'); }
+}
+
+function calculateRowPerformance(inputNode) {
+  const tr = inputNode.closest('tr');
+  const sam = parseFloat(tr.getAttribute('data-sam')) || 0.0;
+  const inputs = tr.querySelectorAll('.prod-hr-input');
+  const defect = parseFloat(tr.querySelector('.total-defect').value) || 0;
+  const downtime = parseFloat(tr.querySelector('.downtime-minute').value) || 0;
+  
+  let totalProd = 0, activeHours = 0;
+  inputs.forEach(inp => {
+    const val = parseInt(inp.value, 10);
+    if(!isNaN(val) && val >= 0 && inp.value.trim() !== '') {
+      totalProd += val; activeHours++;
+    }
+  });
+
+  tr.querySelector('.total-prod-cell').textContent = totalProd;
+  tr.setAttribute('data-active-hours', activeHours);
+  
+  const netMinutes = (activeHours * 60) - downtime;
+  const effCell = tr.querySelector('.eff-cell');
+
+  if(netMinutes > 0 && totalProd > 0 && sam > 0) {
+    const finalEff = Math.round((((totalProd - defect) * sam) / netMinutes) * 100);
+    effCell.textContent = `${finalEff > 0 ? finalEff : 0}%`;
+    if(finalEff >= 85) { effCell.style.background = '#dcfce7'; effCell.style.color = '#15803d'; } 
+    else if(finalEff >= 65) { effCell.style.background = '#fef9c3'; effCell.style.color = '#a16207'; } 
+    else { effCell.style.background = '#fce8e6'; effCell.style.color = '#e5484d'; }
+  } else {
+    effCell.textContent = '0%'; effCell.style.background = '#f3f4f6'; effCell.style.color = '#374151';
+  }
+  updateLineSummaryWidget();
+}
+
+function updateLineSummaryWidget() {
+  const rows = document.querySelectorAll('#productionTableBody tr');
+  const lineSummary = {};
+
+  rows.forEach(tr => {
+    const line = tr.getAttribute('data-line') || 'Unknown';
+    const totalProd = parseFloat(tr.querySelector('.total-prod-cell').textContent) || 0;
+    const defect = parseFloat(tr.querySelector('.total-defect').value) || 0;
+    const downtime = parseFloat(tr.querySelector('.downtime-minute').value) || 0;
+    const sam = parseFloat(tr.getAttribute('data-sam')) || 0;
+    const activeHours = parseInt(tr.getAttribute('data-active-hours'), 10) || 0;
+
+    if (!lineSummary[line]) lineSummary[line] = { totalEarnedMinutes: 0, totalAllocatedMinutes: 0, totalDowntime: 0, totalDefects: 0, operatorCount: 0 };
+
+    lineSummary[line].totalEarnedMinutes += ((totalProd - defect) * sam);
+    lineSummary[line].totalAllocatedMinutes += (activeHours * 60);
+    lineSummary[line].totalDowntime += downtime;
+    lineSummary[line].totalDefects += defect;
+    lineSummary[line].operatorCount += 1;
+  });
+
+  const container = document.getElementById('lineEfficiencyContainer');
+  container.innerHTML = '';
+
+  Object.keys(lineSummary).forEach(line => {
+    const data = lineSummary[line];
+    const netLineMinutes = data.totalAllocatedMinutes - data.totalDowntime;
+    let lineEff = (netLineMinutes > 0 && data.totalEarnedMinutes > 0) ? (data.totalEarnedMinutes / netLineMinutes) * 100 : 0;
+
+    container.innerHTML = `
+      <div style="padding: 12px; margin-bottom: 12px; background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px;">
+        <h4 style="font-size: 14px; font-weight: 700; color: var(--text-dark); margin-bottom: 4px;">${line}</h4>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <h2 style="font-size: 24px; font-weight: 800; color: ${lineEff >= 75 ? 'var(--success)' : 'var(--danger)'}; margin: 0;">${lineEff.toFixed(1)}%</h2>
+          <span class="badge bg-dark" style="background:#1a1d29; color:#fff;">Operators: ${data.operatorCount}</span>
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.6;">
+          <div>Total Defect: <strong style="color: var(--danger);">${data.totalDefects} Pcs</strong></div>
+          <div>Total Downtime: <strong>${data.totalDowntime} Min</strong></div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+async function saveDailyProduction() {
+  const date = document.getElementById('prod_entry_date').value;
+  const line = document.getElementById('prod_line_select').value;
+  const rows = document.querySelectorAll('#productionTableBody tr');
+
+  if(!date || !line || rows.length === 0) { showToast('Form is empty!', 'error'); return; }
+
+  const records = Array.from(rows).map(tr => ({
+    office_id: parseInt(tr.getAttribute('data-office-id'), 10),
+    hourly_target: parseInt(tr.getAttribute('data-target'), 10) || 0,
+    h1: parseInt(tr.querySelector('[data-hr="h1"]').value, 10) || 0,
+    h2: parseInt(tr.querySelector('[data-hr="h2"]').value, 10) || 0,
+    h3: parseInt(tr.querySelector('[data-hr="h3"]').value, 10) || 0,
+    h4: parseInt(tr.querySelector('[data-hr="h4"]').value, 10) || 0,
+    h5: parseInt(tr.querySelector('[data-hr="h5"]').value, 10) || 0,
+    h6: parseInt(tr.querySelector('[data-hr="h6"]').value, 10) || 0,
+    h7: parseInt(tr.querySelector('[data-hr="h7"]').value, 10) || 0,
+    h8: parseInt(tr.querySelector('[data-hr="h8"]').value, 10) || 0,
+    h9: parseInt(tr.querySelector('[data-hr="h9"]').value, 10) || 0,
+    h10: parseInt(tr.querySelector('[data-hr="h10"]').value, 10) || 0,
+    total_prod: parseInt(tr.querySelector('.total-prod-cell').textContent, 10) || 0,
+    total_defect: parseInt(tr.querySelector('.total-defect').value, 10) || 0,
+    downtime_minute: parseInt(tr.querySelector('.downtime-minute').value, 10) || 0,
+    active_hours: parseInt(tr.getAttribute('data-active-hours'), 10) || 0
+  }));
+
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/production-records`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ production_date: date, line_name: line, records })
+    });
+    const result = await res.json();
+    if(result.success) { showToast('Daily Production Saved Successfully!', 'success'); loadOperators(); } 
+    else { showToast(result.message, 'error'); }
+  } catch(err) { showToast('Database writing failed', 'error'); }
+}
+
+// ---------------- SAM FUNCTIONS ----------------
+async function loadSamRecords() {
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/sam-records`);
+    const result = await res.json();
+    if (result.success) { allSams = result.data; renderSamTable(allSams); updateSamFilterDropdowns(); }
+  } catch (err) { showToast('Failed to load SAM', 'error'); }
+}
+
+function renderSamTable(data) {
+  document.getElementById('totalSamCount').textContent = data.length;
+  const tbody = document.getElementById('samTableBody');
+  const empty = document.getElementById('samEmptyState');
+  if (data.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = data.map((row, idx) => `
+    <tr>
+      <td>${idx+1}</td><td><strong>${row.style_name}</strong></td><td>${row.process_name}</td><td>${row.sam_value}</td><td>${row.ie_eff_pct}%</td><td>${row.hourly_target} Pcs</td>
+      <td><div class="action-btns"><button class="btn-sm btn-edit" onclick="editSam(${row.id})">Update</button><button class="btn-sm btn-delete" onclick="deleteSam(${row.id})">Delete</button></div></td>
+    </tr>
+  `).join('');
+}
+
+function calculateLiveTarget() {
+  const sam = parseFloat(document.getElementById('sam_value').value);
+  const eff = parseFloat(document.getElementById('ie_eff_pct').value);
+  const preview = document.getElementById('hourly_target_preview');
+  preview.value = (sam > 0 && eff > 0) ? `${Math.round((60 * (eff / 100)) / sam)} Pcs/Hour` : '';
+}
+
+document.getElementById('samForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const style = document.getElementById('style_name').value.trim();
+  const process = document.getElementById('process_name').value.trim();
+  const sam = document.getElementById('sam_value').value;
+  const eff = document.getElementById('ie_eff_pct').value;
+  const samId = document.getElementById('samId').value;
+
+  if(!style || !process || !sam || !eff) { showToast('Fill all SAM fields!', 'error'); return; }
+  const payload = { style_name: style, process_name: process, sam_value: parseFloat(sam), ie_eff_pct: parseFloat(eff) };
+  try {
+    const url = isSamEditMode ? `${BASE_URL}/api/sam-records/${samId}` : `${BASE_URL}/api/sam-records`;
+    const method = isSamEditMode ? 'PUT' : 'POST';
+    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await res.json();
+    if(result.success) { showToast(result.message); resetSamForm(); loadSamRecords(); }
+  } catch(err) { showToast('Operation failed', 'error'); }
+});
+
+function editSam(id) {
+  const record = allSams.find(s => s.id === id); if(!record) return;
+  isSamEditMode = true;
+  document.getElementById('samId').value = record.id;
+  document.getElementById('style_name').value = record.style_name;
+  document.getElementById('process_name').value = record.process_name;
+  document.getElementById('sam_value').value = record.sam_value;
+  document.getElementById('ie_eff_pct').value = record.ie_eff_pct;
+  calculateLiveTarget();
+  document.getElementById('samFormTitle').textContent = 'Update Style SAM';
+  document.getElementById('samSubmitBtn').textContent = 'Update SAM Record';
+  document.getElementById('samCancelBtn').style.display = 'inline-block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetSamForm() {
+  document.getElementById('samForm').reset(); isSamEditMode = false; document.getElementById('samId').value = '';
+  document.getElementById('samFormTitle').textContent = 'Add New Style Layout (SAM)'; document.getElementById('samSubmitBtn').textContent = 'Save SAM Record';
+  document.getElementById('samCancelBtn').style.display = 'none'; document.getElementById('hourly_target_preview').value = '';
+}
+
+async function deleteSam(id) {
+  if(!confirm('Delete this SAM record?')) return;
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/sam-records/${id}`, { method: 'DELETE' });
+    if((await res.json()).success) { showToast('Record Deleted'); loadSamRecords(); }
+  } catch(err) { showToast('Delete failed', 'error'); }
+}
+
+// ---------------- ASSIGNMENT FUNCTIONS ----------------
+async function initAssignModule() {
+  await loadOperators(); await loadSamRecords();
+  const styleSelect = document.getElementById('assign_style');
+  styleSelect.innerHTML = '<option value="">Select Style</option>';
+  [...new Set(allSams.map(s => s.style_name))].forEach(style => { styleSelect.innerHTML += `<option value="${style}">${style}</option>`; });
+  await loadAssignments();
+}
+
+function lookupOperatorLive() {
+  const idInput = parseInt(document.getElementById('assign_office_id').value, 10);
+  const img = document.getElementById('previewOpImg');
+  const nameTxt = document.getElementById('previewOpName');
+  const idTxt = document.getElementById('previewOpId');
+  const hiddenName = document.getElementById('hidden_op_name');
+  const op = allOperators.find(o => o.office_id === idInput);
+
+  if (op) {
+    nameTxt.textContent = op.operator_name; idTxt.textContent = `Office ID: ${op.office_id} | ${op.designation}`;
+    hiddenName.value = op.operator_name; img.src = opPhotoUrl(op.office_id);
+    img.onerror = function() { this.src = `${BASE_URL}/uploads/default.jpg`; };
+  } else {
+    nameTxt.textContent = "No Operator Found"; idTxt.textContent = "Please type a valid ID"; hiddenName.value = "";
+    img.src = `${BASE_URL}/uploads/default.jpg`;
+  }
+}
+
+function populateProcessesLive() {
+  const selectedStyle = document.getElementById('assign_style').value;
+  const processSelect = document.getElementById('assign_process');
+  processSelect.innerHTML = '<option value="">Select Process</option>';
+  allSams.filter(s => s.style_name === selectedStyle).forEach(p => { processSelect.innerHTML += `<option value="${p.process_name}">${p.process_name}</option>`; });
+}
+
+function loadSamParametersLive() {
+  const selectedStyle = document.getElementById('assign_style').value;
+  const selectedProcess = document.getElementById('assign_process').value;
+  const record = allSams.find(s => s.style_name === selectedStyle && s.process_name === selectedProcess);
+  if(record) {
+    document.getElementById('assign_ie_eff').value = record.ie_eff_pct;
+    document.getElementById('hidden_sam_value').value = record.sam_value;
+    const target = Math.round((60 * (parseFloat(record.ie_eff_pct) / 100)) / parseFloat(record.sam_value));
+    document.getElementById('assign_hourly_target').value = isFinite(target) ? target : 0;
+  }
+}
+
+function recalculateAssignTargetLive() {
+  const eff = parseFloat(document.getElementById('assign_ie_eff').value);
+  const sam = parseFloat(document.getElementById('hidden_sam_value').value);
+  document.getElementById('assign_hourly_target').value = (sam > 0 && eff > 0) ? Math.round((60 * (eff / 100)) / sam) : '';
+}
+
+async function loadAssignments() {
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/assignments`);
+    const result = await res.json();
+    if(result.success) { allAssignments = result.data; renderAssignTable(allAssignments); updateAssignFilterDropdowns(); }
+  } catch(err) { showToast('Failed to load assignments', 'error'); }
+}
+
+function renderAssignTable(data) {
+  document.getElementById('totalAssignCount').textContent = data.length;
+  const tbody = document.getElementById('assignTableBody');
+  const empty = document.getElementById('assignEmptyState');
+  if(data.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = data.map((row, index) => `
+    <tr>
+      <td>${index + 1}</td><td><span class="badge badge-line">${row.line_name}</span></td>
+      <td><img class="avatar" src="${opPhotoUrl(row.office_id)}" onerror="this.src='${BASE_URL}/uploads/default.jpg'"></td>
+      <td><strong>${row.office_id}</strong></td><td>${row.operator_name}</td><td>${row.style_name}</td><td>${row.process_name}</td><td>${row.ie_eff_pct}%</td>
+      <td><span class="badge badge-target">${row.hourly_target} Pcs</span></td>
+      <td><div class="action-btns"><button class="btn-sm btn-edit" onclick="editAssignment(${row.id})">Update</button><button class="btn-sm btn-delete" onclick="deleteAssignment(${row.id})">Remove</button></div></td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('assignForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const line = document.getElementById('assign_line').value;
+  const officeId = document.getElementById('assign_office_id').value;
+  const opName = document.getElementById('hidden_op_name').value;
+  const style = document.getElementById('assign_style').value;
+  const process = document.getElementById('assign_process').value;
+  const eff = document.getElementById('assign_ie_eff').value;
+  const target = document.getElementById('assign_hourly_target').value;
+  const sam = document.getElementById('hidden_sam_value').value;
+  const assignId = document.getElementById('assignId').value;
+
+  if(!line || !officeId || !opName || !style || !process || !eff || !target) { showToast('Fill assignment fields!', 'error'); return; }
+  const payload = { line_name: line, office_id: officeId, operator_name: opName, style_name: style, process_name: process, ie_eff_pct: eff, hourly_target: target, sam_value: sam };
+  try {
+    const url = isAssignEditMode ? `${BASE_URL}/api/assignments/${assignId}` : `${BASE_URL}/api/assignments`;
+    const method = isAssignEditMode ? 'PUT' : 'POST';
+    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await res.json();
+    if(result.success) { showToast(result.message); resetAssignForm(); loadAssignments(); }
+  } catch(err) { showToast('Operation failed', 'error'); }
+});
+
+function editAssignment(id) {
+  const row = allAssignments.find(a => a.id === id); if(!row) return;
+  isAssignEditMode = true; document.getElementById('assignId').value = row.id; document.getElementById('assign_line').value = row.line_name; document.getElementById('assign_office_id').value = row.office_id;
+  lookupOperatorLive(); document.getElementById('assign_style').value = row.style_name; populateProcessesLive();
+  document.getElementById('assign_process').value = row.process_name; document.getElementById('assign_ie_eff').value = row.ie_eff_pct;
+  document.getElementById('assign_hourly_target').value = row.hourly_target; document.getElementById('hidden_sam_value').value = row.sam_value;
+  document.getElementById('assignFormTitle').textContent = 'Update Assigned Operator Parameters';
+  document.getElementById('assignSubmitBtn').textContent = 'Update Allocation'; document.getElementById('assignCancelBtn').style.display = 'inline-block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetAssignForm() {
+  document.getElementById('assignForm').reset(); isAssignEditMode = false; document.getElementById('assignId').value = '';
+  document.getElementById('assignFormTitle').textContent = 'Assign Operator to Production Line';
+  document.getElementById('assignSubmitBtn').textContent = 'Add Operator to Line'; document.getElementById('assignCancelBtn').style.display = 'none';
+  lookupOperatorLive();
+}
+
+async function deleteAssignment(id) {
+  if(!confirm('Remove this operator?')) return;
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/assignments/${id}`, { method: 'DELETE' });
+    if((await res.json()).success) { showToast('Operator Removed'); loadAssignments(); }
+  } catch(err) { showToast('Delete failed', 'error'); }
+}
+
+// ---------------- OPERATOR CRUD ----------------
+async function loadOperators() {
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/operators`);
+    const result = await res.json();
+    if (result.success) { allOperators = result.data || []; renderTable(allOperators); }
+  } catch (err) { showToast('Failed to load operators', 'error'); }
+}
+
+function renderTable(operators) {
+  document.getElementById('totalCount').textContent = operators.length;
+  const body = document.getElementById('operatorTableBody');
+  const empty = document.getElementById('operatorEmptyState');
+
+  if (!operators || operators.length === 0) { body.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  body.innerHTML = operators.map((op, index) => {
+    const avgEff = parseFloat(op.avg_efficiency) || 0;
+    const perfStatus = getPerformanceStatus(avgEff);
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td><img class="avatar" src="${opPhotoUrl(op.office_id)}" onerror="this.src='${BASE_URL}/uploads/default.jpg'"></td>
+        <td>${op.office_id}</td><td>${op.operator_name}</td><td>${op.department}</td><td>${op.section}</td><td>${op.line_name}</td>
+        <td>${op.join_date ? new Date(op.join_date).toLocaleDateString('en-GB') : 'N/A'}</td>
+        <td>${op.designation}</td><td>${op.phone_no || 'N/A'}</td>
+        <td><strong>${avgEff.toFixed(1)}%</strong></td>
+        <td><span class="badge ${perfStatus.class}" style="padding:5px 10px;">${perfStatus.label}</span></td>
+        <td><span class="status-badge ${op.status === 'Inactive' ? 'status-inactive' : 'status-active'}">${op.status || 'Active'}</span></td>
+        <td>
+          <div class="action-btns">
+            ${canEditOperators() ? `
+              <button class="btn-sm btn-edit" onclick="editOperator(${op.id})">Update</button>
+              <button class="btn-sm btn-delete" onclick="deleteOperator(${op.id})">Delete</button>
+            ` : `<span style="color:var(--text-muted); font-size:12px;">View only</span>`}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// IE_PLANNING sees Operator Master List as read-only — only ADMIN can create/update/delete
+function canEditOperators() {
+  const user = getUser();
+  return !!user && user.role === 'ADMIN';
+}
+
+document.getElementById('operatorForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const office_id_raw = document.getElementById('office_id').value;
+  const operator_name = document.getElementById('operator_name').value.trim();
+  const department = document.getElementById('department').value;
+  const section = document.getElementById('section').value;
+  const line_name = document.getElementById('line_name').value;
+  const join_date = document.getElementById('join_date').value;
+  const designation = document.getElementById('designation').value.trim();
+  const phone_no = document.getElementById('phone_no').value.trim();
+  const status = document.getElementById('status').value || 'Active';
+
+  if (!office_id_raw || !operator_name || !department || !section || !line_name || !join_date || !designation) {
+    showToast('Please fill required fields!', 'error'); return;
+  }
+
+  const payload = { office_id: parseInt(office_id_raw, 10), operator_name, phone_no, department, section, line_name, join_date, designation, status };
+  try {
+    const url = isEditMode ? `${BASE_URL}/api/operators/${document.getElementById('operatorId').value}` : `${BASE_URL}/api/operators`;
+    const method = isEditMode ? 'PUT' : 'POST';
+    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await res.json();
+    if (result.success) {
+      await uploadOperatorPhotoIfSelected(payload.office_id);
+      showToast(result.message); resetForm(); loadOperators();
+    }
+    else showToast(result.message, 'error');
+  } catch (err) { showToast('Error saving operator', 'error'); }
+});
+
+// Shows an instant local preview of the chosen file before it's uploaded.
+function previewOperatorFormPhoto() {
+  const fileInput = document.getElementById('operatorPhotoFile');
+  const preview = document.getElementById('operatorFormPhotoPreview');
+  if (fileInput.files && fileInput.files[0]) {
+    preview.src = URL.createObjectURL(fileInput.files[0]);
+  }
+}
+
+function editOperator(id) {
+  const op = allOperators.find(o => o.id === id); if (!op) return;
+  isEditMode = true; 
+  document.getElementById('operatorId').value = op.id; 
+  document.getElementById('office_id').value = op.office_id; 
+  document.getElementById('operator_name').value = op.operator_name;
+  document.getElementById('phone_no').value = op.phone_no || ''; 
+  document.getElementById('department').value = op.department; 
+  document.getElementById('section').value = op.section;
+  document.getElementById('line_name').value = op.line_name; 
+  document.getElementById('join_date').value = op.join_date ? op.join_date.split('T')[0] : '';
+  document.getElementById('designation').value = op.designation;
+  document.getElementById('operatorFormPhotoPreview').src = opPhotoUrl(op.office_id);
+  document.getElementById('statusGroup').style.display = 'flex'; 
+  document.getElementById('status').value = op.status || 'Active';
+  document.getElementById('formTitle').textContent = 'Update Operator Info'; 
+  document.getElementById('submitBtn').textContent = 'Update Operator Info';
+  document.getElementById('cancelBtn').style.display = 'inline-block'; 
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetForm() {
+  document.getElementById('operatorForm').reset(); isEditMode = false; document.getElementById('operatorId').value = '';
+  document.getElementById('statusGroup').style.display = 'none'; document.getElementById('formTitle').textContent = 'Add New Operator';
+  document.getElementById('submitBtn').textContent = 'Save Operator'; document.getElementById('cancelBtn').style.display = 'none';
+  document.getElementById('operatorFormPhotoPreview').src = '/uploads/default.jpg';
+}
+
+async function deleteOperator(id) {
+  if (!confirm('Delete operator?')) return;
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/operators/${id}`, { method: 'DELETE' });
+    if ((await res.json()).success) { showToast('Operator deleted'); loadOperators(); }
+  } catch (err) { showToast('Failed to delete operator', 'error'); }
+}
+
+
+// ===============================================================
+// 🔐 APP INITIALIZATION (RBAC-aware, defined after auth.js loads)
+// ===============================================================
+(function initApp() {
+  if (!requireAuth()) return; // auth.js: redirects to login.html if no valid token
+
+  loadCloudName();
+
+  const user = getUser();
+  applyRoleBasedUI(user); // auth.js: hides nav items + edit/delete buttons per role
+
+  // Land each role on a module it's actually allowed to see
+  if (user.role === 'LINE_SUPERVISOR') {
+    switchModule('production');
+  } else {
+    loadOperators();
+  }
+})();
+</script>
+</body>
+</html>

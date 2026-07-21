@@ -1,0 +1,20 @@
+{
+  "name": "dpqsl-production-tracker",
+  "version": "1.0.0",
+  "description": "DPQSL Garments Production & Efficiency Tracking System with RBAC and Public Digital Signage",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "cors": "^2.8.5",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "multer": "^1.4.5-lts.1",
+    "cloudinary": "^2.4.0",
+    "streamifier": "^0.1.1"
+  }
+}
