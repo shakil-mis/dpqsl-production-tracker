@@ -270,6 +270,12 @@ function renderLowPerformers(list) {
   const track = document.getElementById('lowPerfTrack');
   if (lowPerfInterval) clearInterval(lowPerfInterval);
 
+  // Reset to a clean, static position first — otherwise if this re-render lands
+  // mid-scroll (it runs every 30s on auto-refresh), the new cards would inherit
+  // whatever transform% was left over from the old carousel and visibly jump/shake.
+  track.style.transition = 'none';
+  track.style.transform = 'translateX(0%)';
+
   if (!list || list.length === 0) {
     track.innerHTML = '<div class="dash-empty" style="width:100%;">No low performance record</div>';
     return;

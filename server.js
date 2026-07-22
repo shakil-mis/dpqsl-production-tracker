@@ -322,7 +322,7 @@ app.delete('/api/sam-records/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLAN
 
 // ==========================================
 // 👔 OPERATOR ASSIGNMENT MODULE (CRUD)
-// Access: ADMIN (full) | IE_PLANNING (full) | LINE_SUPERVISOR (no access)
+// Access: ADMIN (full) | IE_PLANNING (full) | LINE_SUPERVISOR (read-only GET — needed by the Daily Production module)
 // ==========================================
 app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     const { line_name, office_id, operator_name, style_name, process_name, ie_eff_pct, hourly_target, sam_value } = req.body;
@@ -341,7 +341,7 @@ app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING')
     }
 });
 
-app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
+app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 'LINE_SUPERVISOR'), async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM operator_assignments ORDER BY id DESC');
         res.json({ success: true, data: result.rows });
