@@ -104,11 +104,10 @@
     background: var(--dash-card-2); border: 1px solid var(--dash-border); border-radius: 8px;
     padding: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
   }
-  .low-perf-card img { width: 38px; height: 38px; border-radius: 8px; object-fit: cover; margin-bottom: 4px; border: 2px solid var(--dash-red); }
-  .low-perf-card .lp-name { font-size: 0.72vw; font-weight: 700; color: var(--dash-text); line-height: 1.2; }
-  .low-perf-card .lp-id { font-size: 0.62vw; color: var(--dash-cyan); margin-top: 2px; }
-  .low-perf-card .lp-line { font-size: 0.6vw; color: var(--dash-muted); margin-top: 2px; }
-  .low-perf-card .lp-eff { font-size: 0.72vw; color: var(--dash-red); font-weight: 800; margin-top: 3px; }
+  .low-perf-card img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; margin-bottom: 3px; border: 2px solid var(--dash-red); }
+  .low-perf-card .lp-name { font-size: 0.72vw; font-weight: 700; color: var(--dash-text); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .low-perf-card .lp-id { font-size: 0.58vw; color: var(--dash-cyan); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .low-perf-card .lp-eff { font-size: 0.72vw; color: var(--dash-red); font-weight: 800; margin-top: 2px; }
 
   .dash-bottom-section { flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; background: var(--dash-card); border-radius: 14px; padding: 1.6vh 1.6vw; border: 1px solid var(--dash-border); }
   .dash-line-header { flex: 0 0 auto; text-align: center; margin-bottom: 1.2vh; }
@@ -290,8 +289,7 @@ function renderLowPerformers(list) {
     <div class="low-perf-card">
       <img src="${opPhotoUrl(p.office_id)}" onerror="this.src='${BASE_URL}/uploads/default.jpg'">
       <div class="lp-name">${p.operator_name}</div>
-      <div class="lp-id">${p.office_id}</div>
-      <div class="lp-line">${p.line_name || 'Line-N/A'}</div>
+      <div class="lp-id">ID: ${p.office_id} &nbsp;|&nbsp; ${p.line_name || 'N/A'}</div>
       <div class="lp-eff">EFF: ${p.efficiency}%</div>
     </div>
   `).join('');
