@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "sync-photos": "node scripts/sync-photos-to-cloudinary.js"
+    "sync-photos": "node sync-photos-to-cloudinary.js"
   },
   "dependencies": {
     "express": "^4.19.2",

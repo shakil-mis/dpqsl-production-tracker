@@ -33,7 +33,7 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 async function main() {
     if (!process.env.CLOUDINARY_CLOUD_NAME) {
