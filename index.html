@@ -146,6 +146,19 @@
       <div class="counter-badge">Total Operators: <span id="totalCount">0</span></div>
     </div>
     
+    <div class="card" id="bulkUploadCard" style="margin-bottom:16px;">
+      <h2 style="margin-bottom:10px;">Bulk Upload (Excel)</h2>
+      <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+        Flexible upload — works with the standard template <b>or</b> a typical HR export (Office ID No, Employee Name, Department, Section, Sub Section, DOJ, Designation, MobileNumber). Header row doesn't have to be row 1.
+        Office IDs that already exist are automatically skipped — only new ones get added.
+      </p>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input type="file" id="bulkExcelFile" accept=".xlsx,.xls">
+        <button type="button" class="btn btn-primary" onclick="uploadBulkExcel()">Upload Excel</button>
+      </div>
+      <div id="bulkUploadResult" style="display:none; margin-top:12px; font-size:13.5px;"></div>
+    </div>
+
     <div class="card" id="operatorFormCard">
       <h2 id="formTitle">Add New Operator</h2>
       <div id="operatorFormError" style="display:none; background:#fdecec; color:#c0392b; border:1px solid #f5c6cb; border-radius:6px; padding:10px 14px; font-size:13.5px; margin-bottom:14px; font-weight:500;"></div>
@@ -486,6 +499,44 @@ async function uploadOperatorPhotoIfSelected(officeId) {
 }
 
 let allOperators = [];
+
+async function uploadBulkExcel() {
+  const fileInput = document.getElementById('bulkExcelFile');
+  const resultBox = document.getElementById('bulkUploadResult');
+  if (!fileInput.files || !fileInput.files[0]) {
+    showToast('Please choose an Excel file first', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  resultBox.style.display = 'block';
+  resultBox.style.color = '#374151';
+  resultBox.textContent = 'Uploading and processing...';
+
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/operators/bulk-upload`, { method: 'POST', body: formData });
+    const result = await res.json();
+    if (result.success) {
+      resultBox.style.color = '#15803d';
+      resultBox.textContent = `✅ ${result.message}`;
+      if (result.errors && result.errors.length) {
+        resultBox.textContent += '  |  Issues: ' + result.errors.slice(0, 5).join(' ');
+      }
+      showToast('Bulk upload complete');
+      fileInput.value = '';
+      loadOperators();
+    } else {
+      resultBox.style.color = '#c0392b';
+      resultBox.textContent = '❌ ' + result.message;
+    }
+  } catch (err) {
+    resultBox.style.color = '#c0392b';
+    resultBox.textContent = '❌ Upload failed: ' + err.message;
+  }
+}
+
 let allSams = [];
 let allAssignments = [];
 let isEditMode = false;
