@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const streamifier = require('streamifier');
+const XLSX = require('xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -174,6 +175,122 @@ app.delete('/api/operators/:id', verifyToken, authorizeRoles('ADMIN'), async (re
     try {
         await pool.query('DELETE FROM operators WHERE id = $1', [id]);
         res.json({ success: true, message: 'Operator deleted successfully!' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ==========================================
+// 📊 BULK OPERATOR UPLOAD (Excel) — ADMIN only
+// Flexible: auto-detects the header row (even if it's not row 1) and matches
+// common column-name variants — works with a plain template OR a real HR
+// export like "Office ID No / Employee Name / Sub Section / DOJ / MobileNumber".
+// Existing office_id rows are SKIPPED (never overwritten) — only brand-new office_ids get inserted.
+// ==========================================
+const BULK_HEADER_PATTERNS = {
+    office_id:     /office\s*id/i,
+    operator_name: /employee\s*name|operator\s*name/i,
+    department:    /^department$/i,
+    section:       /^section$/i,
+    line_name:     /sub\s*section|line\s*name|^line$/i,
+    join_date:     /^doj$|join.*date/i,
+    designation:   /designation/i,
+    phone_no:      /mobile|phone/i,
+    status:        /^status$/i
+};
+
+app.post('/api/operators/bulk-upload', verifyToken, authorizeRoles('ADMIN'), upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ success: false, message: 'No Excel file received.' });
+
+        const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+
+        // Scan the first few rows to find the real header row (handles a blank row-1, etc.)
+        let headerRowIndex = -1;
+        let colMap = {};
+        for (let r = 0; r < Math.min(raw.length, 10); r++) {
+            const row = raw[r];
+            const tempMap = {};
+            row.forEach((cell, colIdx) => {
+                const cellStr = String(cell || '').trim();
+                for (const [field, pattern] of Object.entries(BULK_HEADER_PATTERNS)) {
+                    if (pattern.test(cellStr)) tempMap[field] = colIdx;
+                }
+            });
+            if (tempMap.office_id !== undefined && tempMap.operator_name !== undefined) {
+                headerRowIndex = r;
+                colMap = tempMap;
+                break;
+            }
+        }
+
+        if (headerRowIndex === -1) {
+            return res.status(400).json({ success: false, message: 'Could not find a header row with an Office ID and Name column. Check your file headers.' });
+        }
+
+        const get = (row, field) => (colMap[field] !== undefined ? row[colMap[field]] : undefined);
+
+        let added = 0, skipped = 0;
+        const errors = [];
+
+        for (let r = headerRowIndex + 1; r < raw.length; r++) {
+            const row = raw[r];
+            if (!row || row.length === 0) continue;
+            const rowNum = r + 1;
+
+            const office_id = parseInt(get(row, 'office_id'));
+            if (!office_id) continue; // blank/footer row — skip silently
+
+            const exists = await pool.query('SELECT id FROM operators WHERE office_id = $1', [office_id]);
+            if (exists.rows.length > 0) { skipped++; continue; } // already exists — never overwritten by bulk upload
+
+            const operator_name = String(get(row, 'operator_name') || '').trim();
+            const department = String(get(row, 'department') || '').trim();
+            const section = String(get(row, 'section') || '').trim();
+            const line_name = String(get(row, 'line_name') || '').trim() || section || 'N/A';
+            const designation = String(get(row, 'designation') || '').trim();
+            const status = String(get(row, 'status') || 'Active').trim() || 'Active';
+
+            // Phone numbers: Excel often strips the leading 0 from BD numbers stored as a number
+            let phone_no = get(row, 'phone_no');
+            if (typeof phone_no === 'number') {
+                phone_no = String(phone_no);
+                if (phone_no.length === 10) phone_no = '0' + phone_no;
+            } else {
+                phone_no = String(phone_no || '').trim();
+            }
+
+            // Join date: could be a JS Date, an Excel serial number, or a plain string
+            let join_date = get(row, 'join_date');
+            if (join_date instanceof Date) {
+                join_date = join_date.toISOString().split('T')[0];
+            } else if (typeof join_date === 'number') {
+                const d = XLSX.SSF.parse_date_code(join_date);
+                join_date = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+            } else {
+                join_date = String(join_date || '').trim();
+            }
+
+            if (!operator_name || !department || !section || !join_date || !designation) {
+                errors.push(`Row ${rowNum} (Office ID ${office_id}): missing a required field — skipped.`);
+                continue;
+            }
+
+            await pool.query(
+                `INSERT INTO operators (office_id, operator_name, department, section, line_name, join_date, designation, phone_no, status) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [office_id, operator_name, department, section, line_name, join_date, designation, phone_no, status]
+            );
+            added++;
+        }
+
+        res.json({
+            success: true,
+            message: `Upload complete — ${added} new operator(s) added, ${skipped} already existed and were skipped.${errors.length ? ` (${errors.length} row(s) had issues.)` : ''}`,
+            added, skipped, errors
+        });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
