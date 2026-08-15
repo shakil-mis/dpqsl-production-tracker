@@ -117,4 +117,8 @@ function applyRoleBasedUI(user) {
   if (operatorFormCard) {
     operatorFormCard.style.display = (user.role === 'IE_PLANNING') ? 'none' : '';
   }
+  const bulkUploadCard = document.getElementById('bulkUploadCard');
+  if (bulkUploadCard) {
+    bulkUploadCard.style.display = (user.role === 'IE_PLANNING') ? 'none' : '';
+  }
 }
