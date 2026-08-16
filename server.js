@@ -45,7 +45,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 function uploadBufferToCloudinary(buffer, publicId) {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
-            { public_id: publicId, folder: 'dpqsl_operators', overwrite: true, resource_type: 'image', format: 'jpg' },
+            { public_id: publicId, folder: 'dpqsl_operators', overwrite: true, invalidate: true, resource_type: 'image', format: 'jpg' },
             (error, result) => { if (error) return reject(error); resolve(result); }
         );
         streamifier.createReadStream(buffer).pipe(uploadStream);
