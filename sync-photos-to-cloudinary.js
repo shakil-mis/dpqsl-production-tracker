@@ -5,27 +5,18 @@
 // operator photos into the uploads/ folder, named by office_id — any image
 // extension works (.jpg, .png, .gif, etc.), it does NOT have to be .jpg.
 //
-// ✅ SMART MODE: this now checks your live database first, and ONLY
-// uploads photos for office_ids that actually exist in your `operators`
-// table. Photos in uploads/ for people who were never entered as
-// operators are skipped automatically — no manual filtering needed.
+// ✅ SMART MODE: checks your live database first, and ONLY uploads photos
+// for office_ids that actually exist in your `operators` table. Photos for
+// people who were never entered as operators are skipped automatically.
 //
-// It reads .env for your Cloudinary + Database credentials, so this only
-// works from your project folder where .env already exists.
+// ✅ RETRY + CDN INVALIDATION: each upload is retried up to 3 times if the
+// network hiccups (e.g. a temporary 502), and every upload forces Cloudinary
+// to invalidate its CDN cache — so a fresh photo (or a previously-deleted
+// one) never keeps showing a stale cached image in the app.
 //
 // Usage:
 //   node sync-photos-to-cloudinary.js
 //   (or)  npm run sync-photos
-//
-// What it does:
-//   1. Connects to your database and pulls the list of valid office_ids
-//   2. Scans uploads/ for files named <office_id>.<ext> (any image extension)
-//   3. Skips any file whose office_id is NOT a real operator in the database
-//   4. Skips default.jpg / default.* (that's the fallback avatar, not an operator)
-//   5. Uploads the rest to Cloudinary as public_id = office_id, converted to
-//      .jpg (matches the URL pattern the app already uses — .gif/.png source
-//      files are fine, Cloudinary re-encodes them)
-//   6. Overwrites if that office_id's photo already exists on Cloudinary
 // ===============================================================
 
 require('dotenv').config();
@@ -45,6 +36,34 @@ const pool = process.env.DATABASE_URL
     : new Pool({ user: 'postgres', host: 'localhost', database: 'dpqsl_garments', password: '1234', port: 5432 });
 
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const MAX_RETRIES = 3;
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function uploadWithRetry(filePath, officeId) {
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            await cloudinary.uploader.upload(filePath, {
+                public_id: officeId,
+                folder: 'dpqsl_operators',
+                overwrite: true,
+                invalidate: true,   // 🔑 forces Cloudinary's CDN to drop any stale cached copy immediately
+                resource_type: 'image',
+                format: 'jpg'
+            });
+            return true;
+        } catch (err) {
+            if (attempt < MAX_RETRIES) {
+                console.log(`   ⏳ Retry ${attempt}/${MAX_RETRIES} for Office ID ${officeId} (${err.message})...`);
+                await sleep(1500 * attempt); // back off a bit longer each retry
+            } else {
+                console.error(`❌ Failed for Office ID ${officeId} after ${MAX_RETRIES} attempts: ${err.message}`);
+                return false;
+            }
+        }
+    }
+    return false;
+}
 
 async function main() {
     if (!process.env.CLOUDINARY_CLOUD_NAME) {
@@ -56,7 +75,6 @@ async function main() {
         process.exit(1);
     }
 
-    // Step 1: get the real list of operator office_ids from the database
     console.log('🔎 Fetching operator list from the database...');
     let validIds;
     try {
@@ -94,24 +112,19 @@ async function main() {
         const officeId = baseName;
         const filePath = path.join(UPLOADS_DIR, file);
 
-        try {
-            await cloudinary.uploader.upload(filePath, {
-                public_id: officeId,
-                folder: 'dpqsl_operators',
-                overwrite: true,
-                resource_type: 'image',
-                format: 'jpg'
-            });
+        const ok = await uploadWithRetry(filePath, officeId);
+        if (ok) {
             console.log(`✅ Uploaded Office ID ${officeId} (from ${file})`);
             uploaded++;
-        } catch (err) {
-            console.error(`❌ Failed for ${file}: ${err.message}`);
+        } else {
             failed++;
         }
+
+        await sleep(150); // small pacing gap so we don't hammer Cloudinary/network back-to-back
     }
 
     console.log('\n--- Summary ---');
-    console.log(`Uploaded: ${uploaded}  |  Skipped (not an existing operator): ${notAnOperator}  |  Skipped (invalid filename): ${skipped}  |  Failed: ${failed}`);
+    console.log(`Uploaded: ${uploaded}  |  Skipped (not an existing operator): ${notAnOperator}  |  Skipped (invalid filename): ${skipped}  |  Failed (after retries): ${failed}`);
     await pool.end();
 }
 
