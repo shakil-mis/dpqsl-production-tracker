@@ -473,6 +473,13 @@ async function getTopPerformers() {
         JOIN operator_assignments oa ON oa.office_id = pr.office_id AND oa.line_name = pr.line_name
         GROUP BY o.office_id, o.operator_name, o.line_name
         HAVING SUM((pr.active_hours * 60) - pr.downtime_minute) > 0
+           -- 🎯 0.0% means no real production happened that period — exclude, don't rank as "top"
+           AND ROUND(
+                COALESCE(
+                    (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100,
+                    0
+                )::numeric, 1
+           ) > 0
         ORDER BY efficiency DESC
         LIMIT 3
     `;
@@ -496,12 +503,19 @@ async function getLowPerformers() {
         JOIN operator_assignments oa ON oa.office_id = pr.office_id AND oa.line_name = pr.line_name
         GROUP BY o.office_id, o.operator_name, o.line_name
         HAVING SUM((pr.active_hours * 60) - pr.downtime_minute) > 0
+           -- 🎯 Only flag genuinely low (but real) performance: between 0% (exclusive) and 60%
            AND ROUND(
                 COALESCE(
                     (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100,
                     0
                 )::numeric, 1
-           ) < 60
+           ) > 0
+           AND ROUND(
+                COALESCE(
+                    (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100,
+                    0
+                )::numeric, 1
+           ) < 50
         ORDER BY efficiency ASC
         LIMIT 20
     `;
