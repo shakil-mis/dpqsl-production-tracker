@@ -296,73 +296,158 @@ app.post('/api/operators/bulk-upload', verifyToken, authorizeRoles('ADMIN'), upl
     }
 });
 
-app.post('/api/sam-records', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
-    const { style_name, process_name, sam_value, ie_eff_pct } = req.body;
+// ==========================================
+// 🧵 OPERATION BREAKDOWN MODULE (replaces the old SAM Update)
+// One "breakdown sheet" = one header (Buyer/Style/Item/Size) + many operation rows.
+// Access: ADMIN (full) | IE_PLANNING (full) | LINE_SUPERVISOR (no access)
+// ==========================================
+
+// Fixed reference lists (from your factory's SELECTION_ITEM master) — always offered
+// as suggestions, on top of any custom values already typed in before.
+const DEFAULT_MACHINE_NAMES = ['CYCLE','SNLS','EC','CUFFS','DNLS','2THOL','3THOL','4THOL','5THOL','6THOL','FL3TH','FL5TH','FOA','SNCS','2NCS','KANSAI','ZIG-ZAG','PIC','PICOTIN','SADDLE STT MACHINE','BLIND STITCH','BRTK','EYELET HOLE','BUTTON HOLE','QQ HOLE','BUTTON ATTACH 2 HOLE','BUTTON ATTACH 4 HOLE','WRAPPING MC','REFF. BTTN','HAND WORK'];
+const DEFAULT_GAUGE_GUIDES = ['ATTACHMENT','ANGULAR','1 CM FOLDER','1.5 CM FOLDER','2 CM FOLDER','2.5 CM FOLDER','3 CM FOLDER','3.5 CM FOLDER','4 CM FOLDER','4.5 CM FOLDER','5 CM FOLDER','5.5 CM FOLDER','6 CM FOLDER','6.5 CM FOLDER','7 CM FOLDER','7.5 CM FOLDER','8 CM FOLDER','FLYING GAGE','GAGE'];
+
+// Suggestion list for the Machine Name / Gauge Guide inputs — merges the fixed
+// factory list with any custom values that have been typed and saved before.
+app.get('/api/machine-gauge-options', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     try {
-        const sam = parseFloat(sam_value);
-        const eff = parseFloat(ie_eff_pct);
-        if (sam <= 0) return res.status(400).json({ success: false, message: 'SAM must be greater than 0!' });
-        const result = await pool.query(
-            `INSERT INTO sam_records (style_name, process_name, sam_value, ie_eff_pct) 
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [style_name, process_name, sam, eff]
+        const machinesUsed = await pool.query('SELECT DISTINCT machine_name FROM operation_breakdown_items WHERE machine_name IS NOT NULL AND machine_name != \'\'');
+        const guidesUsed = await pool.query('SELECT DISTINCT gauge_guide FROM operation_breakdown_items WHERE gauge_guide IS NOT NULL AND gauge_guide != \'\'');
+        const machines = Array.from(new Set([...DEFAULT_MACHINE_NAMES, ...machinesUsed.rows.map(r => r.machine_name)])).sort();
+        const guides = Array.from(new Set([...DEFAULT_GAUGE_GUIDES, ...guidesUsed.rows.map(r => r.gauge_guide)])).sort();
+        res.json({ success: true, machines, guides });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// List all breakdown sheets (summary only — for the master list view)
+app.get('/api/operation-breakdowns', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT ob.id, ob.buyer_name, ob.style_name, ob.item, ob.size, ob.created_at,
+                   COUNT(obi.id) AS operation_count,
+                   COALESCE(SUM(obi.smv), 0) AS total_smv
+            FROM operation_breakdowns ob
+            LEFT JOIN operation_breakdown_items obi ON obi.breakdown_id = ob.id
+            GROUP BY ob.id
+            ORDER BY ob.id DESC
+        `);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Get one full sheet (header + all operation rows) — used to load the Edit form, and to
+// populate the Style/Operation dropdowns on the Assign Operator page.
+app.get('/api/operation-breakdowns/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 'LINE_SUPERVISOR'), async (req, res) => {
+    try {
+        const header = await pool.query('SELECT * FROM operation_breakdowns WHERE id = $1', [req.params.id]);
+        if (header.rows.length === 0) return res.status(404).json({ success: false, message: 'Not found.' });
+        const items = await pool.query('SELECT * FROM operation_breakdown_items WHERE breakdown_id = $1 ORDER BY sl_no ASC', [req.params.id]);
+        res.json({ success: true, data: { ...header.rows[0], items: items.rows } });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Create a new breakdown sheet — header + all operation rows in one transaction
+app.post('/api/operation-breakdowns', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
+    const { buyer_name, style_name, item, size, items } = req.body;
+    const client = await pool.connect();
+    try {
+        if (!style_name || !items || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'Style name and at least one operation row are required.' });
+        }
+        await client.query('BEGIN');
+
+        const headerResult = await client.query(
+            `INSERT INTO operation_breakdowns (buyer_name, style_name, item, size) VALUES ($1, $2, $3, $4) RETURNING id`,
+            [buyer_name || null, style_name, item || null, size || null]
         );
-        res.json({ success: true, message: 'SAM record saved successfully!', data: result.rows[0] });
+        const breakdownId = headerResult.rows[0].id;
+
+        for (let i = 0; i < items.length; i++) {
+            const row = items[i];
+            await client.query(
+                `INSERT INTO operation_breakdown_items (breakdown_id, sl_no, machine_name, gauge_guide, operation_name, frequency, smv)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [breakdownId, i + 1, row.machine_name || null, row.gauge_guide || null, row.operation_name, row.frequency || null, row.smv]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Operation breakdown saved successfully!', id: breakdownId });
     } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, message: 'A breakdown sheet for this Style + Size already exists — edit that one instead.' });
+        }
         res.status(500).json({ success: false, message: err.message });
+    } finally {
+        client.release();
     }
 });
 
-app.get('/api/sam-records', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM sam_records ORDER BY id DESC');
-        const updatedData = result.rows.map(row => {
-            const sam = parseFloat(row.sam_value);
-            const eff = parseFloat(row.ie_eff_pct);
-            const hourlyTarget = Math.round((60 * (eff / 100)) / sam);
-            return { ...row, hourly_target: isFinite(hourlyTarget) ? hourlyTarget : 0 };
-        });
-        res.json({ success: true, data: updatedData });
-    } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
-    }
-});
-
-app.put('/api/sam-records/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
+// Update an existing sheet — replaces the header AND all operation rows (delete + re-insert)
+app.put('/api/operation-breakdowns/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     const { id } = req.params;
-    const { style_name, process_name, sam_value, ie_eff_pct } = req.body;
+    const { buyer_name, style_name, item, size, items } = req.body;
+    const client = await pool.connect();
     try {
-        const sam = parseFloat(sam_value);
-        const eff = parseFloat(ie_eff_pct);
-        if (sam <= 0) return res.status(400).json({ success: false, message: 'SAM must be > 0!' });
-        await pool.query(
-            `UPDATE sam_records SET style_name=$1, process_name=$2, sam_value=$3, ie_eff_pct=$4 WHERE id=$5`,
-            [style_name, process_name, sam, eff, id]
+        if (!style_name || !items || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'Style name and at least one operation row are required.' });
+        }
+        await client.query('BEGIN');
+
+        await client.query(
+            `UPDATE operation_breakdowns SET buyer_name=$1, style_name=$2, item=$3, size=$4, updated_at=NOW() WHERE id=$5`,
+            [buyer_name || null, style_name, item || null, size || null, id]
         );
-        res.json({ success: true, message: 'SAM record updated successfully!' });
+
+        await client.query('DELETE FROM operation_breakdown_items WHERE breakdown_id = $1', [id]);
+
+        for (let i = 0; i < items.length; i++) {
+            const row = items[i];
+            await client.query(
+                `INSERT INTO operation_breakdown_items (breakdown_id, sl_no, machine_name, gauge_guide, operation_name, frequency, smv)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [id, i + 1, row.machine_name || null, row.gauge_guide || null, row.operation_name, row.frequency || null, row.smv]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Operation breakdown updated successfully!' });
     } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, message: 'Another breakdown sheet already uses this Style + Size.' });
+        }
         res.status(500).json({ success: false, message: err.message });
+    } finally {
+        client.release();
     }
 });
 
-app.delete('/api/sam-records/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
+app.delete('/api/operation-breakdowns/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     try {
-        await pool.query('DELETE FROM sam_records WHERE id = $1', [req.params.id]);
-        res.json({ success: true, message: 'SAM record deleted successfully!' });
+        await pool.query('DELETE FROM operation_breakdowns WHERE id = $1', [req.params.id]); // items cascade-delete automatically
+        res.json({ success: true, message: 'Breakdown sheet deleted successfully!' });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 });
 
 app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
-    const { line_name, office_id, operator_name, style_name, process_name, ie_eff_pct, hourly_target, sam_value } = req.body;
+    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value } = req.body;
     try {
         const checkDuplicate = await pool.query('SELECT * FROM operator_assignments WHERE office_id = $1 AND line_name = $2', [office_id, line_name]);
         if (checkDuplicate.rows.length > 0) return res.status(400).json({ success: false, message: 'Operator already assigned!' });
         const result = await pool.query(
-            `INSERT INTO operator_assignments (line_name, office_id, operator_name, style_name, process_name, ie_eff_pct, hourly_target, sam_value) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [line_name, office_id, operator_name, style_name, process_name, ie_eff_pct, hourly_target, sam_value]
+            `INSERT INTO operator_assignments (line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value]
         );
         res.json({ success: true, message: 'Operator assigned successfully!', data: result.rows[0] });
     } catch (err) {
@@ -372,7 +457,9 @@ app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING')
 
 app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 'LINE_SUPERVISOR'), async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM operator_assignments ORDER BY id DESC');
+        // ASC (insertion order) so SL numbering stays stable — the first operator
+        // ever assigned always stays at SL 1, new ones just get added below.
+        const result = await pool.query('SELECT * FROM operator_assignments ORDER BY id ASC');
         res.json({ success: true, data: result.rows });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
@@ -381,12 +468,12 @@ app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 
 
 app.put('/api/assignments/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     const { id } = req.params;
-    const { line_name, office_id, operator_name, style_name, process_name, ie_eff_pct, hourly_target, sam_value } = req.body;
+    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value } = req.body;
     try {
         await pool.query(
-            `UPDATE operator_assignments SET line_name=$1, office_id=$2, operator_name=$3, style_name=$4, process_name=$5, ie_eff_pct=$6, hourly_target=$7, sam_value=$8 
-             WHERE id=$9`,
-            [line_name, office_id, operator_name, style_name, process_name, ie_eff_pct, hourly_target, sam_value, id]
+            `UPDATE operator_assignments SET line_name=$1, office_id=$2, operator_name=$3, designation=$4, style_name=$5, operation_name=$6, machine_name=$7, ie_eff_pct=$8, hourly_target=$9, sam_value=$10 
+             WHERE id=$11`,
+            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, id]
         );
         res.json({ success: true, message: 'Assignment updated successfully!' });
     } catch (err) {
