@@ -98,3 +98,81 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 -- Helpful indexes for the joins/filters the app runs often
 CREATE INDEX IF NOT EXISTS idx_prod_records_lookup ON production_records (production_date, line_name, office_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_lookup ON operator_assignments (office_id, line_name);
+-- ===============================================================
+-- MIGRATION: Operation Breakdown module + Assign Operator updates
+-- Run this ONCE against your existing database (Neon SQL Editor or psql).
+-- Safe to run on your live database — uses IF NOT EXISTS everywhere,
+-- and does not touch/delete any existing operator, production, or user data.
+-- ===============================================================
+
+-- 1) HEADER TABLE — one row per Style+Size breakdown sheet
+CREATE TABLE IF NOT EXISTS operation_breakdowns (
+    id SERIAL PRIMARY KEY,
+    buyer_name VARCHAR(150),
+    style_name VARCHAR(100) NOT NULL,
+    item VARCHAR(100),
+    size VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_style_size UNIQUE (style_name, size)
+);
+
+-- 2) ITEMS TABLE — every operation row belonging to a breakdown sheet
+CREATE TABLE IF NOT EXISTS operation_breakdown_items (
+    id SERIAL PRIMARY KEY,
+    breakdown_id INT NOT NULL REFERENCES operation_breakdowns(id) ON DELETE CASCADE,
+    sl_no INT NOT NULL,
+    machine_name VARCHAR(100),
+    gauge_guide VARCHAR(100),
+    operation_name VARCHAR(150) NOT NULL,
+    frequency INT,
+    smv NUMERIC(6,3) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_breakdown_items_lookup ON operation_breakdown_items (breakdown_id, sl_no);
+
+-- 3) MIGRATE existing sam_records into the new structure
+--    Each old (style_name, process_name, sam_value) row becomes one
+--    breakdown (if that style+blank-size doesn't already exist) + one item.
+--    machine_name / gauge_guide / frequency / item / buyer_name are left NULL
+--    for you to fill in later. ie_eff_pct is intentionally NOT migrated —
+--    IE Efficiency % now lives only on the Assign Operator side, per operator.
+DO $$
+DECLARE
+    rec RECORD;
+    v_breakdown_id INT;
+    v_next_sl INT;
+BEGIN
+    FOR rec IN SELECT * FROM sam_records LOOP
+        -- find or create the breakdown header for this style (size left blank on migration)
+        SELECT id INTO v_breakdown_id FROM operation_breakdowns
+            WHERE style_name = rec.style_name AND size IS NOT DISTINCT FROM NULL;
+
+        IF v_breakdown_id IS NULL THEN
+            INSERT INTO operation_breakdowns (style_name, size) VALUES (rec.style_name, NULL)
+            RETURNING id INTO v_breakdown_id;
+            v_next_sl := 1;
+        ELSE
+            SELECT COALESCE(MAX(sl_no), 0) + 1 INTO v_next_sl FROM operation_breakdown_items WHERE breakdown_id = v_breakdown_id;
+        END IF;
+
+        INSERT INTO operation_breakdown_items (breakdown_id, sl_no, operation_name, smv)
+        VALUES (v_breakdown_id, v_next_sl, rec.process_name, rec.sam_value);
+    END LOOP;
+END $$;
+
+-- 4) ASSIGN OPERATOR — add columns to remember Designation + Machine Name at assignment time
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS designation VARCHAR(100);
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS machine_name VARCHAR(100);
+
+-- 5) Rename process_name -> operation_name in operator_assignments, to match the new terminology
+--    (only runs if the old column still exists and the new one doesn't yet)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='operator_assignments' AND column_name='process_name')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='operator_assignments' AND column_name='operation_name') THEN
+        ALTER TABLE operator_assignments RENAME COLUMN process_name TO operation_name;
+    END IF;
+END $$;
+SELECT * FROM operation_breakdowns;
+SELECT * FROM operation_breakdown_items;
