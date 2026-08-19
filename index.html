@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
- <link rel="icon" href="logo-1.png" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Operator Performance Tracker</title>
 <style>
@@ -112,6 +111,7 @@
   .btn-sm[disabled] { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -125,7 +125,7 @@
   </div>
 
   <div class="nav-item active" id="navOperator" onclick="switchModule('operator')"><span>👤</span> Operator Master List</div>
-  <div class="nav-item" id="navSam" onclick="switchModule('sam')"><span>📊</span> SAM Update</div>
+  <div class="nav-item" id="navSam" onclick="switchModule('sam')"><span>📊</span> Operation Breakdown</div>
   <div class="nav-item" id="navAssign" onclick="switchModule('assign')"><span>👔</span> Assign Operator</div>
   <div class="nav-item" id="navProduction" onclick="switchModule('production')"><span>📝</span> Daily Production Update</div>
 
@@ -261,46 +261,77 @@
   <!-- MODULE 2: SAM UPDATE -->
   <div id="samModule" class="module-view">
     <div class="page-header">
-      <h1>SAM Update Configuration</h1>
-      <div class="counter-badge">Total Layouts: <span id="totalSamCount">0</span></div>
+      <h1>Operation Breakdown</h1>
+      <div class="counter-badge">Total Sheets: <span id="totalSamCount">0</span></div>
     </div>
+
     <div class="card">
-      <h2 id="samFormTitle">Add New Style Layout (SAM)</h2>
-      <form id="samForm" novalidate>
-        <input type="hidden" id="samId">
+      <h2 id="samFormTitle">New Operation Breakdown Sheet</h2>
+      <div class="form-grid" style="margin-bottom:18px;">
+        <div class="form-group"><label>Buyer Name</label><input type="text" id="ob_buyer" placeholder="e.g. H&M"></div>
+        <div class="form-group"><label>Style Name</label><input type="text" id="ob_style" placeholder="e.g. Malle Highback"></div>
+        <div class="form-group"><label>Item</label><input type="text" id="ob_item" placeholder="e.g. Cushion Cover"></div>
+        <div class="form-group"><label>Size</label><input type="text" id="ob_size" placeholder="e.g. 45x45 cm"></div>
+      </div>
+
+      <div style="background:#f8f9fb; border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:16px;">
+        <h3 style="font-size:14.5px; margin-bottom:12px; color:var(--text-dark);">Add Operation Row</h3>
         <div class="form-grid">
-          <div class="form-group"><label>Style Name</label><input type="text" id="style_name" placeholder="e.g. T-Shirt 2026"></div>
-          <div class="form-group"><label>Process Name</label><input type="text" id="process_name" placeholder="e.g. Sleeve Attaching"></div>
-          <div class="form-group"><label>SAM</label><input type="number" step="0.01" id="sam_value" placeholder="e.g. 0.45" oninput="calculateLiveTarget()"></div>
-          <div class="form-group"><label>IE Efficiency %</label><input type="number" step="0.1" id="ie_eff_pct" placeholder="e.g. 80" oninput="calculateLiveTarget()"></div>
-          <div class="form-group"><label>Hourly Target (Auto)</label><input type="text" id="hourly_target_preview" readonly placeholder="Auto calculations" style="background: #f3f4f6; font-weight: bold; color: #0369a1;"></div>
-          <div class="form-actions" style="grid-column: span 4;">
-            <button type="submit" class="btn btn-primary" id="samSubmitBtn">Save SAM Record</button>
-            <button type="button" class="btn btn-cancel" id="samCancelBtn" style="display:none;" onclick="resetSamForm()">Cancel</button>
+          <div class="form-group" style="grid-column: span 2;"><label>Operation</label><input type="text" id="ob_operation" placeholder="e.g. 1.5 CM Top Stitch"></div>
+          <div class="form-group">
+            <label>Machine Name</label>
+            <input type="text" id="ob_machine" list="machineNameOptions" placeholder="Select or type...">
+            <datalist id="machineNameOptions"></datalist>
           </div>
+          <div class="form-group">
+            <label>Type of Gauge Guide</label>
+            <input type="text" id="ob_gauge" list="gaugeGuideOptions" placeholder="Select or type...">
+            <datalist id="gaugeGuideOptions"></datalist>
+          </div>
+          <div class="form-group"><label>Frequency</label><input type="number" id="ob_frequency" placeholder="e.g. 1"></div>
+          <div class="form-group"><label>SMV</label><input type="number" step="0.001" id="ob_smv" placeholder="e.g. 0.450"></div>
         </div>
-      </form>
+        <button type="button" class="btn btn-primary" style="margin-top:10px;" onclick="addBreakdownRow()">+ Add Row</button>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>SL</th><th>Machine Name</th><th>Gauge Guide</th><th>Operation</th><th>Frequency</th><th>SMV</th><th></th></tr>
+          </thead>
+          <tbody id="obStagingTableBody"></tbody>
+        </table>
+        <div id="obStagingEmpty" style="text-align:center; padding:16px; color:var(--text-muted); font-size:13.5px;">No operation rows added yet.</div>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; align-items:center; gap:16px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+        <div style="font-weight:800; font-size:15px; color:var(--accent-dark);">Total SMV: <span id="obTotalSmv">0.000</span></div>
+        <button type="button" class="btn btn-primary" onclick="saveBreakdownSheet()" id="samSubmitBtn">Save Breakdown Sheet</button>
+        <button type="button" class="btn btn-cancel" id="samCancelBtn" style="display:none;" onclick="resetSamForm()">Cancel</button>
+      </div>
     </div>
+
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h2>Style SAM & Target Matrix</h2>
-        <input type="text" id="searchSam" placeholder="Search Style/Process..." oninput="filterSamRecords()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+        <h2>Saved Breakdown Sheets</h2>
+        <input type="text" id="searchSam" placeholder="Search Style/Buyer..." oninput="filterSamRecords()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
       </div>
 
       <div class="filter-grid" style="margin-bottom: 20px;">
+        <select id="filterSamBuyer" onchange="filterSamRecords()"><option value="">All Buyers</option></select>
         <select id="filterSamStyle" onchange="filterSamRecords()"><option value="">All Styles</option></select>
-        <select id="filterSamEff" onchange="filterSamRecords()"><option value="">All Efficiency Targets</option><option value="high">>= 80%</option><option value="mid">60% - 79%</option><option value="low">&lt; 60%</option></select>
+        <select id="filterSamSize" onchange="filterSamRecords()"><option value="">All Sizes</option></select>
         <button type="button" class="btn-clear" onclick="resetSamFilters()">Reset Filters</button>
       </div>
 
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>SL</th><th>Style Name</th><th>Process Name</th><th>SAM</th><th>IE EFF %</th><th>Hourly Target</th><th>Actions</th></tr>
+            <tr><th>SL</th><th>Buyer</th><th>Style Name</th><th>Item</th><th>Size</th><th>Operations</th><th>Total SMV</th><th>Actions</th></tr>
           </thead>
           <tbody id="samTableBody"></tbody>
         </table>
-        <div id="samEmptyState" class="empty-state" style="display:none;">No SAM parameters configured yet.</div>
+        <div id="samEmptyState" class="empty-state" style="display:none;">No breakdown sheets yet.</div>
       </div>
     </div>
   </div>
@@ -317,6 +348,7 @@
         <input type="hidden" id="assignId">
         <input type="hidden" id="hidden_sam_value">
         <input type="hidden" id="hidden_op_name">
+        <input type="hidden" id="hidden_designation">
         
         <div class="form-grid">
           <div class="form-group">
@@ -340,11 +372,15 @@
 
           <div class="form-group">
             <label>Select Style</label>
-            <select id="assign_style" onchange="populateProcessesLive()"><option value="">Select Style</option></select>
+            <select id="assign_style" onchange="populateOperationsLive()"><option value="">Select Style</option></select>
           </div>
           <div class="form-group">
-            <label>Select Process</label>
-            <select id="assign_process" onchange="loadSamParametersLive()"><option value="">Select Process</option></select>
+            <label>Select Operation</label>
+            <select id="assign_process" onchange="loadSamParametersLive()"><option value="">Select Operation</option></select>
+          </div>
+          <div class="form-group">
+            <label>Machine Name</label>
+            <input type="text" id="assign_machine" readonly placeholder="Auto-filled from Operation" style="background:#f3f4f6;">
           </div>
           <div class="form-group">
             <label>IE Efficiency % (Editable)</label>
@@ -364,9 +400,13 @@
     </div>
 
     <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap:wrap; gap:10px;">
         <h2>Current Line Layout Matrix</h2>
-        <input type="text" id="searchAssign" placeholder="Search ID or Name..." oninput="filterAssignments()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="searchAssign" placeholder="Search ID or Name..." oninput="filterAssignments()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 200px;">
+          <button type="button" class="btn-sm btn-edit" onclick="printAssignMatrix()">🖨️ Print</button>
+          <button type="button" class="btn-sm btn-edit" onclick="downloadAssignMatrixExcel()">⬇️ Excel</button>
+        </div>
       </div>
 
       <div class="filter-grid" style="margin-bottom: 20px;">
@@ -380,7 +420,7 @@
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>SL</th><th>Line No</th><th>Photo</th><th>Office ID</th><th>Operator Name</th><th>Style Name</th><th>Process Name</th><th>IE EFF %</th><th>Hourly Target</th><th>Actions</th></tr>
+            <tr><th>SL</th><th>Line No</th><th>Photo</th><th>Office ID</th><th>Operator Name</th><th>Designation</th><th>Style Name</th><th>Operation Name</th><th>Machine Name</th><th>IE EFF %</th><th>Hourly Target</th><th>Actions</th></tr>
           </thead>
           <tbody id="assignTableBody"></tbody>
         </table>
@@ -577,6 +617,7 @@ function switchModule(moduleName) {
     document.getElementById('samModule').classList.add('active-view');
     document.getElementById('navSam').classList.add('active');
     loadSamRecords();
+    loadMachineGaugeOptions();
   } else if(moduleName === 'assign') {
     document.getElementById('assignModule').classList.add('active-view');
     document.getElementById('navAssign').classList.add('active');
@@ -627,32 +668,36 @@ function resetAllFilters() {
 // ---------------- SAM UPDATE ----------------
 function filterSamRecords() {
   const searchQuery = document.getElementById('searchSam').value.trim().toLowerCase();
+  const selectedBuyer = document.getElementById('filterSamBuyer').value;
   const selectedStyle = document.getElementById('filterSamStyle').value;
-  const selectedEff = document.getElementById('filterSamEff').value;
+  const selectedSize = document.getElementById('filterSamSize').value;
 
-  const filtered = allSams.filter(sam => {
-    const matchesSearch = sam.style_name.toLowerCase().includes(searchQuery) || sam.process_name.toLowerCase().includes(searchQuery);
-    const matchesStyle = selectedStyle === "" || sam.style_name === selectedStyle;
-    let matchesEff = true;
-    if (selectedEff === 'high') matchesEff = sam.ie_eff_pct >= 80;
-    else if (selectedEff === 'mid') matchesEff = sam.ie_eff_pct >= 60 && sam.ie_eff_pct < 80;
-    else if (selectedEff === 'low') matchesEff = sam.ie_eff_pct < 60;
-    return matchesSearch && matchesStyle && matchesEff;
+  const filtered = allSams.filter(sheet => {
+    const matchesSearch = (sheet.style_name || '').toLowerCase().includes(searchQuery) || (sheet.buyer_name || '').toLowerCase().includes(searchQuery);
+    const matchesBuyer = selectedBuyer === "" || sheet.buyer_name === selectedBuyer;
+    const matchesStyle = selectedStyle === "" || sheet.style_name === selectedStyle;
+    const matchesSize = selectedSize === "" || sheet.size === selectedSize;
+    return matchesSearch && matchesBuyer && matchesStyle && matchesSize;
   });
   renderSamTable(filtered);
 }
 
 function resetSamFilters() {
-  document.getElementById('searchSam').value = ''; document.getElementById('filterSamStyle').value = '';
-  document.getElementById('filterSamEff').value = ''; renderSamTable(allSams);
+  document.getElementById('searchSam').value = ''; document.getElementById('filterSamBuyer').value = '';
+  document.getElementById('filterSamStyle').value = ''; document.getElementById('filterSamSize').value = '';
+  renderSamTable(allSams);
 }
 
 function updateSamFilterDropdowns() {
+  const buyerSelect = document.getElementById('filterSamBuyer');
   const styleSelect = document.getElementById('filterSamStyle');
+  const sizeSelect = document.getElementById('filterSamSize');
+  buyerSelect.innerHTML = '<option value="">All Buyers</option>';
   styleSelect.innerHTML = '<option value="">All Styles</option>';
-  [...new Set(allSams.map(s => s.style_name))].forEach(style => {
-    styleSelect.innerHTML += `<option value="${style}">${style}</option>`;
-  });
+  sizeSelect.innerHTML = '<option value="">All Sizes</option>';
+  [...new Set(allSams.map(s => s.buyer_name).filter(Boolean))].forEach(b => { buyerSelect.innerHTML += `<option value="${b}">${b}</option>`; });
+  [...new Set(allSams.map(s => s.style_name).filter(Boolean))].forEach(s => { styleSelect.innerHTML += `<option value="${s}">${s}</option>`; });
+  [...new Set(allSams.map(s => s.size).filter(Boolean))].forEach(sz => { sizeSelect.innerHTML += `<option value="${sz}">${sz}</option>`; });
 }
 
 // ---------------- ASSIGN OPERATOR ----------------
@@ -896,12 +941,95 @@ async function saveDailyProduction() {
 }
 
 // ---------------- SAM FUNCTIONS ----------------
+let obStagingRows = [];   // rows added to the current in-progress breakdown sheet (before Save)
+let obEditingId = null;   // set when editing an existing sheet
+
+async function loadMachineGaugeOptions() {
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/machine-gauge-options`);
+    const result = await res.json();
+    if (result.success) {
+      document.getElementById('machineNameOptions').innerHTML = result.machines.map(m => `<option value="${m}">`).join('');
+      document.getElementById('gaugeGuideOptions').innerHTML = result.guides.map(g => `<option value="${g}">`).join('');
+    }
+  } catch (err) { /* non-critical, dropdown just stays empty */ }
+}
+
+function addBreakdownRow() {
+  const operation = document.getElementById('ob_operation').value.trim();
+  const machine = document.getElementById('ob_machine').value.trim();
+  const gauge = document.getElementById('ob_gauge').value.trim();
+  const frequency = document.getElementById('ob_frequency').value;
+  const smv = document.getElementById('ob_smv').value;
+
+  if (!operation || !smv || parseFloat(smv) <= 0) { showToast('Operation name and a valid SMV are required', 'error'); return; }
+
+  obStagingRows.push({
+    machine_name: machine || null,
+    gauge_guide: gauge || null,
+    operation_name: operation,
+    frequency: frequency ? parseInt(frequency, 10) : null,
+    smv: parseFloat(smv)
+  });
+
+  document.getElementById('ob_operation').value = '';
+  document.getElementById('ob_machine').value = '';
+  document.getElementById('ob_gauge').value = '';
+  document.getElementById('ob_frequency').value = '';
+  document.getElementById('ob_smv').value = '';
+  document.getElementById('ob_operation').focus();
+
+  renderStagingTable();
+}
+
+function removeStagingRow(index) {
+  obStagingRows.splice(index, 1);
+  renderStagingTable();
+}
+
+function renderStagingTable() {
+  const tbody = document.getElementById('obStagingTableBody');
+  const empty = document.getElementById('obStagingEmpty');
+  if (obStagingRows.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; }
+  else {
+    empty.style.display = 'none';
+    tbody.innerHTML = obStagingRows.map((row, idx) => `
+      <tr>
+        <td>${idx + 1}</td><td>${row.machine_name || '-'}</td><td>${row.gauge_guide || '-'}</td><td>${row.operation_name}</td><td>${row.frequency ?? '-'}</td><td>${row.smv.toFixed(3)}</td>
+        <td><button type="button" class="btn-sm btn-delete" onclick="removeStagingRow(${idx})">Remove</button></td>
+      </tr>
+    `).join('');
+  }
+  const total = obStagingRows.reduce((sum, r) => sum + r.smv, 0);
+  document.getElementById('obTotalSmv').textContent = total.toFixed(3);
+}
+
+async function saveBreakdownSheet() {
+  const buyer_name = document.getElementById('ob_buyer').value.trim();
+  const style_name = document.getElementById('ob_style').value.trim();
+  const item = document.getElementById('ob_item').value.trim();
+  const size = document.getElementById('ob_size').value.trim();
+
+  if (!style_name) { showToast('Style Name is required', 'error'); return; }
+  if (obStagingRows.length === 0) { showToast('Add at least one operation row first', 'error'); return; }
+
+  const payload = { buyer_name, style_name, item, size, items: obStagingRows };
+  try {
+    const url = obEditingId ? `${BASE_URL}/api/operation-breakdowns/${obEditingId}` : `${BASE_URL}/api/operation-breakdowns`;
+    const method = obEditingId ? 'PUT' : 'POST';
+    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await res.json();
+    if (result.success) { showToast(result.message); resetSamForm(); loadSamRecords(); loadMachineGaugeOptions(); }
+    else showToast(result.message, 'error');
+  } catch (err) { showToast('Save failed', 'error'); }
+}
+
 async function loadSamRecords() {
   try {
-    const res = await apiFetch(`${BASE_URL}/api/sam-records`);
+    const res = await apiFetch(`${BASE_URL}/api/operation-breakdowns`);
     const result = await res.json();
     if (result.success) { allSams = result.data; renderSamTable(allSams); updateSamFilterDropdowns(); }
-  } catch (err) { showToast('Failed to load SAM', 'error'); }
+  } catch (err) { showToast('Failed to load breakdown sheets', 'error'); }
 }
 
 function renderSamTable(data) {
@@ -912,65 +1040,145 @@ function renderSamTable(data) {
   empty.style.display = 'none';
   tbody.innerHTML = data.map((row, idx) => `
     <tr>
-      <td>${idx+1}</td><td><strong>${row.style_name}</strong></td><td>${row.process_name}</td><td>${row.sam_value}</td><td>${row.ie_eff_pct}%</td><td>${row.hourly_target} Pcs</td>
-      <td><div class="action-btns"><button class="btn-sm btn-edit" onclick="editSam(${row.id})">Update</button><button class="btn-sm btn-delete" onclick="deleteSam(${row.id})">Delete</button></div></td>
+      <td>${idx+1}</td><td>${row.buyer_name || '-'}</td><td><strong>${row.style_name}</strong></td><td>${row.item || '-'}</td><td>${row.size || '-'}</td>
+      <td>${row.operation_count}</td><td>${parseFloat(row.total_smv).toFixed(3)}</td>
+      <td><div class="action-btns">
+        <button class="btn-sm btn-edit" onclick="editSam(${row.id})">Edit</button>
+        <button class="btn-sm btn-edit" onclick="printBreakdownSheet(${row.id})">🖨️ Print</button>
+        <button class="btn-sm btn-edit" onclick="downloadBreakdownExcel(${row.id})">⬇️ Excel</button>
+        <button class="btn-sm btn-delete" onclick="deleteSam(${row.id})">Delete</button>
+      </div></td>
     </tr>
   `).join('');
 }
 
-function calculateLiveTarget() {
-  const sam = parseFloat(document.getElementById('sam_value').value);
-  const eff = parseFloat(document.getElementById('ie_eff_pct').value);
-  const preview = document.getElementById('hourly_target_preview');
-  preview.value = (sam > 0 && eff > 0) ? `${Math.round((60 * (eff / 100)) / sam)} Pcs/Hour` : '';
-}
-
-document.getElementById('samForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const style = document.getElementById('style_name').value.trim();
-  const process = document.getElementById('process_name').value.trim();
-  const sam = document.getElementById('sam_value').value;
-  const eff = document.getElementById('ie_eff_pct').value;
-  const samId = document.getElementById('samId').value;
-
-  if(!style || !process || !sam || !eff) { showToast('Fill all SAM fields!', 'error'); return; }
-  const payload = { style_name: style, process_name: process, sam_value: parseFloat(sam), ie_eff_pct: parseFloat(eff) };
+async function editSam(id) {
   try {
-    const url = isSamEditMode ? `${BASE_URL}/api/sam-records/${samId}` : `${BASE_URL}/api/sam-records`;
-    const method = isSamEditMode ? 'PUT' : 'POST';
-    const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await apiFetch(`${BASE_URL}/api/operation-breakdowns/${id}`);
     const result = await res.json();
-    if(result.success) { showToast(result.message); resetSamForm(); loadSamRecords(); }
-  } catch(err) { showToast('Operation failed', 'error'); }
-});
-
-function editSam(id) {
-  const record = allSams.find(s => s.id === id); if(!record) return;
-  isSamEditMode = true;
-  document.getElementById('samId').value = record.id;
-  document.getElementById('style_name').value = record.style_name;
-  document.getElementById('process_name').value = record.process_name;
-  document.getElementById('sam_value').value = record.sam_value;
-  document.getElementById('ie_eff_pct').value = record.ie_eff_pct;
-  calculateLiveTarget();
-  document.getElementById('samFormTitle').textContent = 'Update Style SAM';
-  document.getElementById('samSubmitBtn').textContent = 'Update SAM Record';
-  document.getElementById('samCancelBtn').style.display = 'inline-block';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!result.success) { showToast('Could not load sheet', 'error'); return; }
+    const sheet = result.data;
+    obEditingId = id;
+    document.getElementById('ob_buyer').value = sheet.buyer_name || '';
+    document.getElementById('ob_style').value = sheet.style_name || '';
+    document.getElementById('ob_item').value = sheet.item || '';
+    document.getElementById('ob_size').value = sheet.size || '';
+    obStagingRows = sheet.items.map(it => ({
+      machine_name: it.machine_name, gauge_guide: it.gauge_guide, operation_name: it.operation_name,
+      frequency: it.frequency, smv: parseFloat(it.smv)
+    }));
+    renderStagingTable();
+    document.getElementById('samFormTitle').textContent = 'Edit Operation Breakdown Sheet';
+    document.getElementById('samSubmitBtn').textContent = 'Update Breakdown Sheet';
+    document.getElementById('samCancelBtn').style.display = 'inline-block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err) { showToast('Could not load sheet', 'error'); }
 }
 
 function resetSamForm() {
-  document.getElementById('samForm').reset(); isSamEditMode = false; document.getElementById('samId').value = '';
-  document.getElementById('samFormTitle').textContent = 'Add New Style Layout (SAM)'; document.getElementById('samSubmitBtn').textContent = 'Save SAM Record';
-  document.getElementById('samCancelBtn').style.display = 'none'; document.getElementById('hourly_target_preview').value = '';
+  obEditingId = null; obStagingRows = [];
+  document.getElementById('ob_buyer').value = ''; document.getElementById('ob_style').value = '';
+  document.getElementById('ob_item').value = ''; document.getElementById('ob_size').value = '';
+  renderStagingTable();
+  document.getElementById('samFormTitle').textContent = 'New Operation Breakdown Sheet';
+  document.getElementById('samSubmitBtn').textContent = 'Save Breakdown Sheet';
+  document.getElementById('samCancelBtn').style.display = 'none';
 }
 
 async function deleteSam(id) {
-  if(!confirm('Delete this SAM record?')) return;
+  if (!confirm('Delete this entire breakdown sheet (all its operation rows)?')) return;
   try {
-    const res = await apiFetch(`${BASE_URL}/api/sam-records/${id}`, { method: 'DELETE' });
-    if((await res.json()).success) { showToast('Record Deleted'); loadSamRecords(); }
-  } catch(err) { showToast('Delete failed', 'error'); }
+    const res = await apiFetch(`${BASE_URL}/api/operation-breakdowns/${id}`, { method: 'DELETE' });
+    if ((await res.json()).success) { showToast('Sheet Deleted'); loadSamRecords(); }
+  } catch (err) { showToast('Delete failed', 'error'); }
+}
+
+// ---------------- PRINT / DOWNLOAD (Operation Breakdown) ----------------
+function buildBreakdownPrintHtml(sheet) {
+  const rows = sheet.items.map(it => `
+    <tr>
+      <td style="text-align:center;">${it.sl_no}</td>
+      <td>${it.machine_name || ''}</td>
+      <td>${it.gauge_guide || ''}</td>
+      <td>${it.operation_name}</td>
+      <td style="text-align:center;">${it.frequency ?? ''}</td>
+      <td style="text-align:center;">${parseFloat(it.smv).toFixed(3)}</td>
+    </tr>
+  `).join('');
+  const total = sheet.items.reduce((s, it) => s + parseFloat(it.smv), 0);
+  return `
+    <html><head><title>Operation Breakdown - ${sheet.style_name}</title>
+    <style>
+      body { font-family: Arial, sans-serif; color:#1f2937; padding:24px; }
+      h1,h2,h3 { text-align:center; margin:2px 0; }
+      table { width:100%; border-collapse:collapse; margin-top:16px; }
+      th, td { border:1px solid #cbd5e1; padding:6px 8px; font-size:13px; }
+      th { background:#f1f5f9; }
+      .meta { display:flex; justify-content:space-between; margin-top:14px; font-size:13.5px; }
+      .meta div { line-height:1.8; }
+      tfoot td { font-weight:bold; background:#f8fafc; }
+    </style></head>
+    <body onload="window.print()">
+      <h2>DEBONAIR PADDING AND QUILTING SOLUTION LIMITED</h2>
+      <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
+      <h3>OPERATION BREAKDOWN SHEET</h3>
+      <div class="meta">
+        <div>
+          <div><b>Buyer Name:</b> ${sheet.buyer_name || '-'}</div>
+          <div><b>Style Name:</b> ${sheet.style_name}</div>
+        </div>
+        <div>
+          <div><b>Item:</b> ${sheet.item || '-'}</div>
+          <div><b>Size:</b> ${sheet.size || '-'}</div>
+        </div>
+        <div><b>Total SMV: ${total.toFixed(3)}</b></div>
+      </div>
+      <table>
+        <thead><tr><th>SL NO</th><th>MACHINE NAME</th><th>TYPE OF GAGE GUIDE</th><th>OPERATION</th><th>FREQUENCY</th><th>SMV</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr><td colspan="5" style="text-align:right;">TOTAL SEWING SMV</td><td style="text-align:center;">${total.toFixed(3)}</td></tr></tfoot>
+      </table>
+    </body></html>
+  `;
+}
+
+async function printBreakdownSheet(id) {
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/operation-breakdowns/${id}`);
+    const result = await res.json();
+    if (!result.success) { showToast('Could not load sheet', 'error'); return; }
+    const win = window.open('', '_blank');
+    win.document.write(buildBreakdownPrintHtml(result.data));
+    win.document.close();
+  } catch (err) { showToast('Print failed', 'error'); }
+}
+
+async function downloadBreakdownExcel(id) {
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/operation-breakdowns/${id}`);
+    const result = await res.json();
+    if (!result.success) { showToast('Could not load sheet', 'error'); return; }
+    const sheet = result.data;
+    const total = sheet.items.reduce((s, it) => s + parseFloat(it.smv), 0);
+
+    const aoa = [
+      ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
+      ['BHALUKA, MYMENSINGH'],
+      ['OPERATION BREAKDOWN SHEET'],
+      ['BUYER NAME', sheet.buyer_name || '', '', '', 'TOTAL SMV', total.toFixed(3)],
+      ['STYLE NAME', sheet.style_name],
+      ['ITEM', sheet.item || ''],
+      ['SIZE', sheet.size || ''],
+      ['SL NO', 'MACHINE NAME', 'TYPE OF GAGE GUIDE', 'OPERATION', 'FREQUENCY', 'SMV'],
+      ...sheet.items.map(it => [it.sl_no, it.machine_name || '', it.gauge_guide || '', it.operation_name, it.frequency ?? '', parseFloat(it.smv)]),
+      ['', '', '', '', 'TOTAL SEWING SMV', total.toFixed(3)]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:8},{wch:20},{wch:20},{wch:35},{wch:12},{wch:10}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Operation Breakdown');
+    XLSX.writeFile(wb, `Operation_Breakdown_${sheet.style_name.replace(/\s+/g,'_')}.xlsx`);
+  } catch (err) { showToast('Download failed', 'error'); }
 }
 
 // ---------------- ASSIGNMENT FUNCTIONS ----------------
@@ -978,9 +1186,14 @@ async function initAssignModule() {
   await loadOperators(); await loadSamRecords();
   const styleSelect = document.getElementById('assign_style');
   styleSelect.innerHTML = '<option value="">Select Style</option>';
-  [...new Set(allSams.map(s => s.style_name))].forEach(style => { styleSelect.innerHTML += `<option value="${style}">${style}</option>`; });
+  allSams.forEach(sheet => {
+    const label = sheet.size ? `${sheet.style_name} (${sheet.size})` : sheet.style_name;
+    styleSelect.innerHTML += `<option value="${sheet.id}">${label}</option>`;
+  });
   await loadAssignments();
 }
+
+let currentAssignItems = []; // operation rows of whichever Style is currently selected in the Assign form
 
 function lookupOperatorLive() {
   const idInput = parseInt(document.getElementById('assign_office_id').value, 10);
@@ -988,34 +1201,56 @@ function lookupOperatorLive() {
   const nameTxt = document.getElementById('previewOpName');
   const idTxt = document.getElementById('previewOpId');
   const hiddenName = document.getElementById('hidden_op_name');
+  const hiddenDesignation = document.getElementById('hidden_designation');
   const op = allOperators.find(o => o.office_id === idInput);
 
   if (op) {
     nameTxt.textContent = op.operator_name; idTxt.textContent = `Office ID: ${op.office_id} | ${op.designation}`;
-    hiddenName.value = op.operator_name; img.src = opPhotoUrl(op.office_id);
+    hiddenName.value = op.operator_name; hiddenDesignation.value = op.designation || '';
+    img.src = opPhotoUrl(op.office_id);
     img.onerror = function() { this.src = `${BASE_URL}/uploads/default.jpg`; };
   } else {
-    nameTxt.textContent = "No Operator Found"; idTxt.textContent = "Please type a valid ID"; hiddenName.value = "";
+    nameTxt.textContent = "No Operator Found"; idTxt.textContent = "Please type a valid ID";
+    hiddenName.value = ""; hiddenDesignation.value = "";
     img.src = `${BASE_URL}/uploads/default.jpg`;
   }
 }
 
-function populateProcessesLive() {
-  const selectedStyle = document.getElementById('assign_style').value;
+// Triggered when Style is selected — fetches that breakdown sheet's operation rows
+// and fills the Operation dropdown from them.
+async function populateOperationsLive() {
+  const breakdownId = document.getElementById('assign_style').value;
   const processSelect = document.getElementById('assign_process');
-  processSelect.innerHTML = '<option value="">Select Process</option>';
-  allSams.filter(s => s.style_name === selectedStyle).forEach(p => { processSelect.innerHTML += `<option value="${p.process_name}">${p.process_name}</option>`; });
+  processSelect.innerHTML = '<option value="">Select Operation</option>';
+  document.getElementById('assign_machine').value = '';
+  document.getElementById('hidden_sam_value').value = '';
+  currentAssignItems = [];
+  if (!breakdownId) return;
+
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/operation-breakdowns/${breakdownId}`);
+    const result = await res.json();
+    if (result.success) {
+      currentAssignItems = result.data.items;
+      currentAssignItems.forEach(it => {
+        processSelect.innerHTML += `<option value="${it.operation_name}">${it.operation_name}</option>`;
+      });
+    }
+  } catch (err) { showToast('Could not load operations for this style', 'error'); }
 }
 
+// Triggered when Operation is selected — auto-fills Machine Name + SAM value from that row.
+// IE Efficiency % is NOT auto-filled here — it's a per-operator manual entry (see recalculateAssignTargetLive).
 function loadSamParametersLive() {
-  const selectedStyle = document.getElementById('assign_style').value;
-  const selectedProcess = document.getElementById('assign_process').value;
-  const record = allSams.find(s => s.style_name === selectedStyle && s.process_name === selectedProcess);
-  if(record) {
-    document.getElementById('assign_ie_eff').value = record.ie_eff_pct;
-    document.getElementById('hidden_sam_value').value = record.sam_value;
-    const target = Math.round((60 * (parseFloat(record.ie_eff_pct) / 100)) / parseFloat(record.sam_value));
-    document.getElementById('assign_hourly_target').value = isFinite(target) ? target : 0;
+  const selectedOperation = document.getElementById('assign_process').value;
+  const item = currentAssignItems.find(it => it.operation_name === selectedOperation);
+  if (item) {
+    document.getElementById('assign_machine').value = item.machine_name || '';
+    document.getElementById('hidden_sam_value').value = item.smv;
+    recalculateAssignTargetLive(); // in case an efficiency % is already typed in
+  } else {
+    document.getElementById('assign_machine').value = '';
+    document.getElementById('hidden_sam_value').value = '';
   }
 }
 
@@ -1043,7 +1278,7 @@ function renderAssignTable(data) {
     <tr>
       <td>${index + 1}</td><td><span class="badge badge-line">${row.line_name}</span></td>
       <td><img class="avatar" src="${opPhotoUrl(row.office_id)}" onerror="this.src='${BASE_URL}/uploads/default.jpg'"></td>
-      <td><strong>${row.office_id}</strong></td><td>${row.operator_name}</td><td>${row.style_name}</td><td>${row.process_name}</td><td>${row.ie_eff_pct}%</td>
+      <td><strong>${row.office_id}</strong></td><td>${row.operator_name}</td><td>${row.designation || '-'}</td><td>${row.style_name}</td><td>${row.operation_name}</td><td>${row.machine_name || '-'}</td><td>${row.ie_eff_pct}%</td>
       <td><span class="badge badge-target">${row.hourly_target} Pcs</span></td>
       <td><div class="action-btns"><button class="btn-sm btn-edit" onclick="editAssignment(${row.id})">Update</button><button class="btn-sm btn-delete" onclick="deleteAssignment(${row.id})">Remove</button></div></td>
     </tr>
@@ -1055,30 +1290,44 @@ document.getElementById('assignForm').addEventListener('submit', async (e) => {
   const line = document.getElementById('assign_line').value;
   const officeId = document.getElementById('assign_office_id').value;
   const opName = document.getElementById('hidden_op_name').value;
+  const designation = document.getElementById('hidden_designation').value;
   const style = document.getElementById('assign_style').value;
-  const process = document.getElementById('assign_process').value;
+  const styleText = document.getElementById('assign_style').selectedOptions[0]?.textContent.replace(/\s*\(.*\)$/, '') || '';
+  const operation = document.getElementById('assign_process').value;
+  const machine = document.getElementById('assign_machine').value;
   const eff = document.getElementById('assign_ie_eff').value;
   const target = document.getElementById('assign_hourly_target').value;
   const sam = document.getElementById('hidden_sam_value').value;
   const assignId = document.getElementById('assignId').value;
 
-  if(!line || !officeId || !opName || !style || !process || !eff || !target) { showToast('Fill assignment fields!', 'error'); return; }
-  const payload = { line_name: line, office_id: officeId, operator_name: opName, style_name: style, process_name: process, ie_eff_pct: eff, hourly_target: target, sam_value: sam };
+  if(!line || !officeId || !opName || !style || !operation || !eff || !target) { showToast('Fill assignment fields!', 'error'); return; }
+  const payload = { line_name: line, office_id: officeId, operator_name: opName, designation, style_name: styleText, operation_name: operation, machine_name: machine, ie_eff_pct: eff, hourly_target: target, sam_value: sam };
   try {
     const url = isAssignEditMode ? `${BASE_URL}/api/assignments/${assignId}` : `${BASE_URL}/api/assignments`;
     const method = isAssignEditMode ? 'PUT' : 'POST';
     const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const result = await res.json();
     if(result.success) { showToast(result.message); resetAssignForm(); loadAssignments(); }
+    else showToast(result.message, 'error');
   } catch(err) { showToast('Operation failed', 'error'); }
 });
 
-function editAssignment(id) {
+async function editAssignment(id) {
   const row = allAssignments.find(a => a.id === id); if(!row) return;
   isAssignEditMode = true; document.getElementById('assignId').value = row.id; document.getElementById('assign_line').value = row.line_name; document.getElementById('assign_office_id').value = row.office_id;
-  lookupOperatorLive(); document.getElementById('assign_style').value = row.style_name; populateProcessesLive();
-  document.getElementById('assign_process').value = row.process_name; document.getElementById('assign_ie_eff').value = row.ie_eff_pct;
-  document.getElementById('assign_hourly_target').value = row.hourly_target; document.getElementById('hidden_sam_value').value = row.sam_value;
+  lookupOperatorLive();
+
+  // Find the breakdown sheet matching this assignment's style (and size, if there's more than one sheet sharing the style name)
+  const matchingSheet = allSams.find(s => s.style_name === row.style_name);
+  if (matchingSheet) {
+    document.getElementById('assign_style').value = matchingSheet.id;
+    await populateOperationsLive();
+  }
+  document.getElementById('assign_process').value = row.operation_name;
+  document.getElementById('assign_machine').value = row.machine_name || '';
+  document.getElementById('assign_ie_eff').value = row.ie_eff_pct;
+  document.getElementById('assign_hourly_target').value = row.hourly_target;
+  document.getElementById('hidden_sam_value').value = row.sam_value;
   document.getElementById('assignFormTitle').textContent = 'Update Assigned Operator Parameters';
   document.getElementById('assignSubmitBtn').textContent = 'Update Allocation'; document.getElementById('assignCancelBtn').style.display = 'inline-block';
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1097,6 +1346,81 @@ async function deleteAssignment(id) {
     const res = await apiFetch(`${BASE_URL}/api/assignments/${id}`, { method: 'DELETE' });
     if((await res.json()).success) { showToast('Operator Removed'); loadAssignments(); }
   } catch(err) { showToast('Delete failed', 'error'); }
+}
+
+// ---------------- PRINT / DOWNLOAD (Assign Operator — Current Line Layout Matrix) ----------------
+// Respects whatever the Line/Style filters + search box currently show.
+function getCurrentlyFilteredAssignments() {
+  const searchQuery = document.getElementById('searchAssign').value.trim().toLowerCase();
+  const selectedLine = document.getElementById('filterAssignLine').value;
+  const selectedStyle = document.getElementById('filterAssignStyle').value;
+  return allAssignments.filter(row => {
+    const matchesSearch = row.operator_name.toLowerCase().includes(searchQuery) || row.office_id.toString().includes(searchQuery);
+    const matchesLine = selectedLine === "" || row.line_name === selectedLine;
+    const matchesStyle = selectedStyle === "" || row.style_name === selectedStyle;
+    return matchesSearch && matchesLine && matchesStyle;
+  });
+}
+
+function printAssignMatrix() {
+  const data = getCurrentlyFilteredAssignments();
+  if (data.length === 0) { showToast('Nothing to print — no rows match the current filters', 'error'); return; }
+  const lineLabel = document.getElementById('filterAssignLine').value || 'All Lines';
+  const rows = data.map((row, i) => `
+    <tr>
+      <td style="text-align:center;">${i + 1}</td>
+      <td>${row.line_name}</td>
+      <td>${row.office_id}</td>
+      <td>${row.operator_name}</td>
+      <td>${row.designation || ''}</td>
+      <td>${row.style_name}</td>
+      <td>${row.operation_name}</td>
+      <td>${row.machine_name || ''}</td>
+      <td style="text-align:center;">${row.ie_eff_pct}%</td>
+      <td style="text-align:center;">${row.hourly_target}</td>
+    </tr>
+  `).join('');
+  const html = `
+    <html><head><title>Line Operator Assignment - ${lineLabel}</title>
+    <style>
+      body { font-family: Arial, sans-serif; color:#1f2937; padding:24px; }
+      h1,h2,h3 { text-align:center; margin:2px 0; }
+      table { width:100%; border-collapse:collapse; margin-top:16px; }
+      th, td { border:1px solid #cbd5e1; padding:6px 8px; font-size:12px; }
+      th { background:#f1f5f9; }
+    </style></head>
+    <body onload="window.print()">
+      <h2>DEBONAIR PADDING AND QUILTING SOLUTION LIMITED</h2>
+      <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
+      <h3>LINE OPERATOR ASSIGNMENT — ${lineLabel}</h3>
+      <table>
+        <thead><tr><th>SL</th><th>Line</th><th>Office ID</th><th>Name</th><th>Designation</th><th>Style</th><th>Operation</th><th>Machine</th><th>IE EFF %</th><th>Hourly Target</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </body></html>
+  `;
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+function downloadAssignMatrixExcel() {
+  const data = getCurrentlyFilteredAssignments();
+  if (data.length === 0) { showToast('Nothing to download — no rows match the current filters', 'error'); return; }
+  const lineLabel = document.getElementById('filterAssignLine').value || 'All_Lines';
+
+  const aoa = [
+    ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
+    ['BHALUKA, MYMENSINGH'],
+    [`LINE OPERATOR ASSIGNMENT — ${lineLabel}`],
+    ['SL', 'Line', 'Office ID', 'Name', 'Designation', 'Style', 'Operation', 'Machine', 'IE EFF %', 'Hourly Target'],
+    ...data.map((row, i) => [i + 1, row.line_name, row.office_id, row.operator_name, row.designation || '', row.style_name, row.operation_name, row.machine_name || '', row.ie_eff_pct, row.hourly_target])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:6},{wch:10},{wch:10},{wch:20},{wch:16},{wch:18},{wch:28},{wch:14},{wch:10},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Line Assignment');
+  XLSX.writeFile(wb, `Line_Assignment_${lineLabel.replace(/\s+/g,'_')}.xlsx`);
 }
 
 // ---------------- OPERATOR CRUD ----------------
