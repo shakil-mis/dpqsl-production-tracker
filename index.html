@@ -1136,7 +1136,7 @@ function buildBreakdownPrintHtml(sheet) {
       <table>
         <thead><tr><th>SL NO</th><th>MACHINE NAME</th><th>TYPE OF GAGE GUIDE</th><th>OPERATION</th><th>FREQUENCY</th><th>SMV</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="5" style="text-align:right;">TOTAL SEWING SMV</td><td style="text-align:center;">${total.toFixed(3)}</td></tr></tfoot>
+        <tfoot><tr><td colspan="5" style="text-align:right;">TOTAL SMV</td><td style="text-align:center;">${total.toFixed(3)}</td></tr></tfoot>
       </table>
     </body></html>
   `;
@@ -1171,7 +1171,7 @@ async function downloadBreakdownExcel(id) {
       ['SIZE', sheet.size || ''],
       ['SL NO', 'MACHINE NAME', 'TYPE OF GAGE GUIDE', 'OPERATION', 'FREQUENCY', 'SMV'],
       ...sheet.items.map(it => [it.sl_no, it.machine_name || '', it.gauge_guide || '', it.operation_name, it.frequency ?? '', parseFloat(it.smv)]),
-      ['', '', '', '', 'TOTAL SEWING SMV', total.toFixed(3)]
+      ['', '', '', '', 'TOTAL SMV', total.toFixed(3)]
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{wch:8},{wch:20},{wch:20},{wch:35},{wch:12},{wch:10}];
