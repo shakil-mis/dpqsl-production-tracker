@@ -293,7 +293,7 @@
             <datalist id="gaugeGuideOptions"></datalist>
           </div>
           <div class="form-group"><label>Frequency</label><input type="number" id="ob_frequency" placeholder="e.g. 1"></div>
-          <div class="form-group"><label>SMV</label><input type="number" step="0.001" id="ob_smv" placeholder="e.g. 0.450"></div>
+          <div class="form-group"><label>SMV</label><input type="number" step="0.01" id="ob_smv" placeholder="e.g. 0.45"></div>
         </div>
         <button type="button" class="btn btn-primary" id="obAddRowBtn" style="margin-top:10px;" onclick="addBreakdownRow()">+ Add Row</button>
       </div>
@@ -309,7 +309,7 @@
       </div>
 
       <div style="display:flex; justify-content:flex-end; align-items:center; gap:16px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
-        <div style="font-weight:800; font-size:15px; color:var(--accent-dark);">Total SMV: <span id="obTotalSmv">0.000</span></div>
+        <div style="font-weight:800; font-size:15px; color:var(--accent-dark);">Total SMV: <span id="obTotalSmv">0.00</span></div>
         <button type="button" class="btn btn-primary" onclick="saveBreakdownSheet()" id="samSubmitBtn">Save Breakdown Sheet</button>
         <button type="button" class="btn btn-cancel" id="samCancelBtn" style="display:none;" onclick="resetSamForm()">Cancel</button>
       </div>
@@ -1196,7 +1196,7 @@ function renderStagingTable() {
     `).join('');
   }
   const total = obStagingRows.reduce((sum, r) => sum + r.smv, 0);
-  document.getElementById('obTotalSmv').textContent = total.toFixed(3);
+  document.getElementById('obTotalSmv').textContent = total.toFixed(2);
 }
 
 async function saveBreakdownSheet() {
@@ -1236,7 +1236,7 @@ function renderSamTable(data) {
   tbody.innerHTML = data.map((row, idx) => `
     <tr>
       <td>${idx+1}</td><td>${row.buyer_name || '-'}</td><td><strong>${row.style_name}</strong></td><td>${row.item || '-'}</td><td>${row.size || '-'}</td>
-      <td>${row.operation_count}</td><td>${parseFloat(row.total_smv).toFixed(3)}</td>
+      <td>${row.operation_count}</td><td>${parseFloat(row.total_smv).toFixed(2)}</td>
       <td><div class="action-btns">
         <button class="btn-sm btn-edit" onclick="editSam(${row.id})">Edit</button>
         <button class="btn-sm btn-edit" onclick="printBreakdownSheet(${row.id})">🖨️ Print</button>
@@ -1300,14 +1300,14 @@ function buildBreakdownPrintHtml(sheet) {
       <td>${it.gauge_guide || ''}</td>
       <td>${it.operation_name}</td>
       <td style="text-align:center;">${it.frequency ?? ''}</td>
-      <td style="text-align:center;">${parseFloat(it.smv).toFixed(3)}</td>
+      <td style="text-align:center;">${parseFloat(it.smv).toFixed(2)}</td>
     </tr>
   `).join('');
   const total = sheet.items.reduce((s, it) => s + parseFloat(it.smv), 0);
   // Total row lives inside <tbody> (not <tfoot>) — a <tfoot> repeats on every printed
   // page for a multi-page table; putting it as the last <tbody> row makes it appear
   // exactly once, right after the last operation row.
-  const totalRow = `<tr><td colspan="5" style="text-align:right; font-weight:bold; background:#f8fafc;">TOTAL SMV</td><td style="text-align:center; font-weight:bold; background:#f8fafc;">${total.toFixed(3)}</td></tr>`;
+  const totalRow = `<tr><td colspan="5" style="text-align:right; font-weight:bold; background:#f8fafc;">TOTAL SMV</td><td style="text-align:center; font-weight:bold; background:#f8fafc;">${total.toFixed(2)}</td></tr>`;
   return `
     <html><head><title>Operation Breakdown - ${sheet.style_name}</title>
     <style>
@@ -1333,7 +1333,7 @@ function buildBreakdownPrintHtml(sheet) {
           <div><b>Item:</b> ${sheet.item || '-'}</div>
           <div><b>Size:</b> ${sheet.size || '-'}</div>
         </div>
-        <div><b>Total SMV: ${total.toFixed(3)}</b></div>
+        <div><b>Total SMV: ${total.toFixed(2)}</b></div>
       </div>
       <table>
         <thead><tr><th>SL NO</th><th>MACHINE NAME</th><th>TYPE OF GAGE GUIDE</th><th>OPERATION</th><th>FREQUENCY</th><th>SMV</th></tr></thead>
@@ -1366,13 +1366,13 @@ async function downloadBreakdownExcel(id) {
       ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
       ['BHALUKA, MYMENSINGH'],
       ['OPERATION BREAKDOWN SHEET'],
-      ['BUYER NAME', sheet.buyer_name || '', '', '', 'TOTAL SMV', total.toFixed(3)],
+      ['BUYER NAME', sheet.buyer_name || '', '', '', 'TOTAL SMV', total.toFixed(2)],
       ['STYLE NAME', sheet.style_name],
       ['ITEM', sheet.item || ''],
       ['SIZE', sheet.size || ''],
       ['SL NO', 'MACHINE NAME', 'TYPE OF GAGE GUIDE', 'OPERATION', 'FREQUENCY', 'SMV'],
       ...sheet.items.map(it => [it.sl_no, it.machine_name || '', it.gauge_guide || '', it.operation_name, it.frequency ?? '', parseFloat(it.smv)]),
-      ['', '', '', '', 'TOTAL SMV', total.toFixed(3)]
+      ['', '', '', '', 'TOTAL SMV', total.toFixed(2)]
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{wch:8},{wch:20},{wch:20},{wch:35},{wch:12},{wch:10}];
