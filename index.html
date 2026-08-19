@@ -388,7 +388,7 @@
           </div>
           <div class="form-group">
             <label>IE Efficiency % (Editable)</label>
-            <input type="number" step="0.1" id="assign_ie_eff" placeholder="Efficiency" oninput="recalculateAssignTargetLive()">
+            <input type="number" step="0.1" id="assign_ie_eff" value="100" placeholder="Efficiency" oninput="recalculateAssignTargetLive()">
           </div>
           <div class="form-group">
             <label>Hourly Target (Auto/Custom)</label>
@@ -673,7 +673,9 @@ function filterOperators() {
 function printOperatorList() {
   const data = getCurrentlyFilteredOperators();
   if (data.length === 0) { showToast('Nothing to print — no rows match the current filters', 'error'); return; }
-  const rows = data.map((op, i) => `
+  const rows = data.map((op, i) => {
+    const eff = parseFloat(op.avg_efficiency) || 0;
+    return `
     <tr>
       <td style="text-align:center;">${i + 1}</td>
       <td>${op.office_id}</td>
@@ -683,10 +685,12 @@ function printOperatorList() {
       <td>${op.line_name}</td>
       <td>${op.designation}</td>
       <td>${op.phone_no || ''}</td>
-      <td style="text-align:center;">${(parseFloat(op.avg_efficiency) || 0).toFixed(1)}%</td>
+      <td style="text-align:center;">${eff.toFixed(1)}%</td>
+      <td style="text-align:center;">${getPerformanceStatus(eff).label}</td>
       <td>${op.status || 'Active'}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
   const html = `
     <html><head><title>Operator Master List</title>
     <style>
@@ -701,7 +705,7 @@ function printOperatorList() {
       <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
       <h3>OPERATOR MASTER LIST</h3>
       <table>
-        <thead><tr><th>SL</th><th>Office ID</th><th>Name</th><th>Dept</th><th>Section</th><th>Line</th><th>Designation</th><th>Phone</th><th>Avg Eff.</th><th>Status</th></tr></thead>
+        <thead><tr><th>SL</th><th>Office ID</th><th>Name</th><th>Dept</th><th>Section</th><th>Line</th><th>Designation</th><th>Phone</th><th>Avg Eff.</th><th>Performance</th><th>Status</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </body></html>
@@ -718,11 +722,14 @@ function downloadOperatorListExcel() {
     ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
     ['BHALUKA, MYMENSINGH'],
     ['OPERATOR MASTER LIST'],
-    ['SL', 'Office ID', 'Name', 'Dept', 'Section', 'Line', 'Designation', 'Phone', 'Avg Eff. %', 'Status'],
-    ...data.map((op, i) => [i + 1, op.office_id, op.operator_name, op.department, op.section, op.line_name, op.designation, op.phone_no || '', (parseFloat(op.avg_efficiency) || 0).toFixed(1), op.status || 'Active'])
+    ['SL', 'Office ID', 'Name', 'Dept', 'Section', 'Line', 'Designation', 'Phone', 'Avg Eff. %', 'Performance', 'Status'],
+    ...data.map((op, i) => {
+      const eff = parseFloat(op.avg_efficiency) || 0;
+      return [i + 1, op.office_id, op.operator_name, op.department, op.section, op.line_name, op.designation, op.phone_no || '', eff.toFixed(1), getPerformanceStatus(eff).label, op.status || 'Active'];
+    })
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:6},{wch:10},{wch:20},{wch:12},{wch:12},{wch:10},{wch:18},{wch:14},{wch:10},{wch:10}];
+  ws['!cols'] = [{wch:6},{wch:10},{wch:20},{wch:12},{wch:12},{wch:10},{wch:18},{wch:14},{wch:10},{wch:12},{wch:10}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Operator Master List');
   XLSX.writeFile(wb, `Operator_Master_List.xlsx`);
@@ -917,9 +924,13 @@ async function loadProductionLayout() {
   }
 
   try {
-    const resAssign = await apiFetch(`${BASE_URL}/api/assignments`);
+    // Fetch only this line's operators (not the whole factory list) + today's production
+    // records at the same time, instead of one-after-another — cuts load time noticeably.
+    const [resAssign, resProd] = await Promise.all([
+      apiFetch(`${BASE_URL}/api/assignments?line=${encodeURIComponent(selectedLine)}`),
+      apiFetch(`${BASE_URL}/api/production-records?date=${selectedDate}&line=${selectedLine}`)
+    ]);
     const resultAssign = await resAssign.json();
-    const resProd = await apiFetch(`${BASE_URL}/api/production-records?date=${selectedDate}&line=${selectedLine}`);
     const resultProd = await resProd.json();
     
     const savedRecordsMap = {};
@@ -1293,6 +1304,10 @@ function buildBreakdownPrintHtml(sheet) {
     </tr>
   `).join('');
   const total = sheet.items.reduce((s, it) => s + parseFloat(it.smv), 0);
+  // Total row lives inside <tbody> (not <tfoot>) — a <tfoot> repeats on every printed
+  // page for a multi-page table; putting it as the last <tbody> row makes it appear
+  // exactly once, right after the last operation row.
+  const totalRow = `<tr><td colspan="5" style="text-align:right; font-weight:bold; background:#f8fafc;">TOTAL SMV</td><td style="text-align:center; font-weight:bold; background:#f8fafc;">${total.toFixed(3)}</td></tr>`;
   return `
     <html><head><title>Operation Breakdown - ${sheet.style_name}</title>
     <style>
@@ -1301,9 +1316,9 @@ function buildBreakdownPrintHtml(sheet) {
       table { width:100%; border-collapse:collapse; margin-top:16px; }
       th, td { border:1px solid #cbd5e1; padding:6px 8px; font-size:13px; }
       th { background:#f1f5f9; }
+      thead { display: table-header-group; } /* repeat column headers on every page — this one IS meant to repeat */
       .meta { display:flex; justify-content:space-between; margin-top:14px; font-size:13.5px; }
       .meta div { line-height:1.8; }
-      tfoot td { font-weight:bold; background:#f8fafc; }
     </style></head>
     <body onload="window.print()">
       <h2>DEBONAIR PADDING AND QUILTING SOLUTION LIMITED</h2>
@@ -1322,8 +1337,7 @@ function buildBreakdownPrintHtml(sheet) {
       </div>
       <table>
         <thead><tr><th>SL NO</th><th>MACHINE NAME</th><th>TYPE OF GAGE GUIDE</th><th>OPERATION</th><th>FREQUENCY</th><th>SMV</th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="5" style="text-align:right;">TOTAL SMV</td><td style="text-align:center;">${total.toFixed(3)}</td></tr></tfoot>
+        <tbody>${rows}${totalRow}</tbody>
       </table>
     </body></html>
   `;

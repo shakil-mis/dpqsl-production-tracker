@@ -459,7 +459,12 @@ app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 
     try {
         // ASC (insertion order) so SL numbering stays stable — the first operator
         // ever assigned always stays at SL 1, new ones just get added below.
-        const result = await pool.query('SELECT * FROM operator_assignments ORDER BY id ASC');
+        // Optional ?line=Line-06 filter — used by Daily Production Update so it only
+        // fetches that one line's operators instead of the whole factory every time.
+        const { line } = req.query;
+        const result = line
+            ? await pool.query('SELECT * FROM operator_assignments WHERE line_name = $1 ORDER BY id ASC', [line])
+            : await pool.query('SELECT * FROM operator_assignments ORDER BY id ASC');
         res.json({ success: true, data: result.rows });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
