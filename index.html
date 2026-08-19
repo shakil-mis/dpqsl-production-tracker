@@ -211,9 +211,13 @@
     </div>
     
     <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap:wrap; gap:10px;">
         <h2>Master List</h2>
-        <input type="text" id="searchOperator" placeholder="Search ID or Name..." oninput="filterOperators()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="searchOperator" placeholder="Search ID or Name..." oninput="filterOperators()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+          <button type="button" class="btn-sm btn-edit" onclick="printOperatorList()">🖨️ Print</button>
+          <button type="button" class="btn-sm btn-edit" onclick="downloadOperatorListExcel()">⬇️ Excel</button>
+        </div>
       </div>
       
       <div class="filter-grid" style="margin-bottom: 20px;">
@@ -291,7 +295,7 @@
           <div class="form-group"><label>Frequency</label><input type="number" id="ob_frequency" placeholder="e.g. 1"></div>
           <div class="form-group"><label>SMV</label><input type="number" step="0.001" id="ob_smv" placeholder="e.g. 0.450"></div>
         </div>
-        <button type="button" class="btn btn-primary" style="margin-top:10px;" onclick="addBreakdownRow()">+ Add Row</button>
+        <button type="button" class="btn btn-primary" id="obAddRowBtn" style="margin-top:10px;" onclick="addBreakdownRow()">+ Add Row</button>
       </div>
 
       <div style="overflow-x:auto;">
@@ -462,9 +466,13 @@
     </div>
 
     <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap:wrap; gap:10px;">
         <h2>Operator Hourly Production Sheet (08:00 AM - 07:00 PM Tracker)</h2>
-        <input type="text" id="searchProduction" placeholder="Search Operator..." oninput="filterProductionSheet()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="searchProduction" placeholder="Search Operator..." oninput="filterProductionSheet()" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13.5px; outline: none; width: 220px;">
+          <button type="button" class="btn-sm btn-edit" onclick="printProductionSheet()">🖨️ Print</button>
+          <button type="button" class="btn-sm btn-edit" onclick="downloadProductionSheetExcel()">⬇️ Excel</button>
+        </div>
       </div>
 
       <div class="filter-grid" style="margin-bottom: 20px;">
@@ -633,7 +641,7 @@ function switchModule(moduleName) {
 }
 
 // ---------------- OPERATOR MASTER ----------------
-function filterOperators() {
+function getCurrentlyFilteredOperators() {
   const searchQuery = document.getElementById('searchOperator').value.trim().toLowerCase();
   const selectedDept = document.getElementById('filterDept').value;
   const selectedSection = document.getElementById('filterSection').value;
@@ -641,13 +649,13 @@ function filterOperators() {
   const selectedStatus = document.getElementById('filterStatus').value;
   const selectedPerf = document.getElementById('filterPerf').value;
 
-  const filtered = allOperators.filter(op => {
+  return allOperators.filter(op => {
     const matchesSearch = op.operator_name.toLowerCase().includes(searchQuery) || op.office_id.toString().includes(searchQuery);
     const matchesDept = selectedDept === "" || op.department === selectedDept;
     const matchesSection = selectedSection === "" || op.section === selectedSection;
     const matchesLine = selectedLine === "" || op.line_name === selectedLine;
     const matchesStatus = selectedStatus === "" || (op.status || 'Active') === selectedStatus;
-    
+
     let matchesPerf = true;
     if (selectedPerf !== "") {
       const eff = parseFloat(op.avg_efficiency) || 0;
@@ -655,7 +663,69 @@ function filterOperators() {
     }
     return matchesSearch && matchesDept && matchesSection && matchesLine && matchesStatus && matchesPerf;
   });
-  renderTable(filtered);
+}
+
+function filterOperators() {
+  renderTable(getCurrentlyFilteredOperators());
+}
+
+// ---------------- PRINT / DOWNLOAD (Operator Master List) ----------------
+function printOperatorList() {
+  const data = getCurrentlyFilteredOperators();
+  if (data.length === 0) { showToast('Nothing to print — no rows match the current filters', 'error'); return; }
+  const rows = data.map((op, i) => `
+    <tr>
+      <td style="text-align:center;">${i + 1}</td>
+      <td>${op.office_id}</td>
+      <td>${op.operator_name}</td>
+      <td>${op.department}</td>
+      <td>${op.section}</td>
+      <td>${op.line_name}</td>
+      <td>${op.designation}</td>
+      <td>${op.phone_no || ''}</td>
+      <td style="text-align:center;">${(parseFloat(op.avg_efficiency) || 0).toFixed(1)}%</td>
+      <td>${op.status || 'Active'}</td>
+    </tr>
+  `).join('');
+  const html = `
+    <html><head><title>Operator Master List</title>
+    <style>
+      body { font-family: Arial, sans-serif; color:#1f2937; padding:24px; }
+      h1,h2,h3 { text-align:center; margin:2px 0; }
+      table { width:100%; border-collapse:collapse; margin-top:16px; }
+      th, td { border:1px solid #cbd5e1; padding:6px 8px; font-size:12px; }
+      th { background:#f1f5f9; }
+    </style></head>
+    <body onload="window.print()">
+      <h2>DEBONAIR PADDING AND QUILTING SOLUTION LIMITED</h2>
+      <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
+      <h3>OPERATOR MASTER LIST</h3>
+      <table>
+        <thead><tr><th>SL</th><th>Office ID</th><th>Name</th><th>Dept</th><th>Section</th><th>Line</th><th>Designation</th><th>Phone</th><th>Avg Eff.</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </body></html>
+  `;
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+function downloadOperatorListExcel() {
+  const data = getCurrentlyFilteredOperators();
+  if (data.length === 0) { showToast('Nothing to download — no rows match the current filters', 'error'); return; }
+  const aoa = [
+    ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
+    ['BHALUKA, MYMENSINGH'],
+    ['OPERATOR MASTER LIST'],
+    ['SL', 'Office ID', 'Name', 'Dept', 'Section', 'Line', 'Designation', 'Phone', 'Avg Eff. %', 'Status'],
+    ...data.map((op, i) => [i + 1, op.office_id, op.operator_name, op.department, op.section, op.line_name, op.designation, op.phone_no || '', (parseFloat(op.avg_efficiency) || 0).toFixed(1), op.status || 'Active'])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:6},{wch:10},{wch:20},{wch:12},{wch:12},{wch:10},{wch:18},{wch:14},{wch:10},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Operator Master List');
+  XLSX.writeFile(wb, `Operator_Master_List.xlsx`);
 }
 
 function resetAllFilters() {
@@ -751,6 +821,87 @@ function filterProductionSheet() {
 function resetProductionFilters() {
   document.getElementById('searchProduction').value = ''; document.getElementById('filterProdEff').value = '';
   document.querySelectorAll('#productionTableBody tr').forEach(tr => tr.style.display = '');
+}
+
+// ---------------- PRINT / DOWNLOAD (Daily Production Update) ----------------
+// Reads whatever is currently on-screen (including unsaved edits) for only the visible
+// (i.e. not filtered-out) rows.
+function getVisibleProductionRows() {
+  const rows = [];
+  document.querySelectorAll('#productionTableBody tr').forEach(tr => {
+    if (tr.style.display === 'none') return;
+    const officeId = tr.getAttribute('data-office-id');
+    const target = tr.getAttribute('data-target');
+    const name = tr.children[3]?.textContent.trim() || '';
+    const hours = [...tr.querySelectorAll('.prod-hr-input')].map(inp => inp.value || 0);
+    const totalProd = tr.querySelector('.total-prod-cell')?.textContent.trim() || '0';
+    const defect = tr.querySelector('.total-defect')?.value || 0;
+    const downtime = tr.querySelector('.downtime-minute')?.value || 0;
+    const eff = tr.querySelector('.eff-cell')?.textContent.trim() || '0%';
+    rows.push({ officeId, target, name, hours, totalProd, defect, downtime, eff });
+  });
+  return rows;
+}
+
+function printProductionSheet() {
+  const data = getVisibleProductionRows();
+  if (data.length === 0) { showToast('Nothing to print — select a Line/Date first', 'error'); return; }
+  const line = document.getElementById('prod_line_select').value;
+  const date = document.getElementById('prod_entry_date').value;
+  const rows = data.map((r, i) => `
+    <tr>
+      <td style="text-align:center;">${i + 1}</td>
+      <td>${r.officeId}</td>
+      <td>${r.name}</td>
+      <td style="text-align:center;">${r.target}</td>
+      ${r.hours.map(h => `<td style="text-align:center;">${h || ''}</td>`).join('')}
+      <td style="text-align:center; font-weight:bold;">${r.totalProd}</td>
+      <td style="text-align:center;">${r.defect}</td>
+      <td style="text-align:center;">${r.downtime}</td>
+      <td style="text-align:center;">${r.eff}</td>
+    </tr>
+  `).join('');
+  const html = `
+    <html><head><title>Daily Production Sheet - ${line}</title>
+    <style>
+      body { font-family: Arial, sans-serif; color:#1f2937; padding:24px; }
+      h1,h2,h3 { text-align:center; margin:2px 0; }
+      table { width:100%; border-collapse:collapse; margin-top:16px; }
+      th, td { border:1px solid #cbd5e1; padding:5px 6px; font-size:11px; }
+      th { background:#f1f5f9; }
+    </style></head>
+    <body onload="window.print()">
+      <h2>DEBONAIR PADDING AND QUILTING SOLUTION LIMITED</h2>
+      <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
+      <h3>DAILY PRODUCTION SHEET — ${line} — ${date}</h3>
+      <table>
+        <thead><tr><th>SL</th><th>ID</th><th>Name</th><th>Target/Hr</th><th>08-09</th><th>09-10</th><th>10-11</th><th>11-12</th><th>12-01</th><th>02-03</th><th>03-04</th><th>04-05</th><th>05-06</th><th>06-07</th><th>Total</th><th>Defect</th><th>Downtime</th><th>Eff %</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </body></html>
+  `;
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+function downloadProductionSheetExcel() {
+  const data = getVisibleProductionRows();
+  if (data.length === 0) { showToast('Nothing to download — select a Line/Date first', 'error'); return; }
+  const line = document.getElementById('prod_line_select').value;
+  const date = document.getElementById('prod_entry_date').value;
+  const aoa = [
+    ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
+    ['BHALUKA, MYMENSINGH'],
+    [`DAILY PRODUCTION SHEET — ${line} — ${date}`],
+    ['SL', 'ID', 'Name', 'Target/Hr', '08-09', '09-10', '10-11', '11-12', '12-01', '02-03', '03-04', '04-05', '05-06', '06-07', 'Total', 'Defect', 'Downtime', 'Eff %'],
+    ...data.map((r, i) => [i + 1, r.officeId, r.name, r.target, ...r.hours, r.totalProd, r.defect, r.downtime, r.eff])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:5},{wch:8},{wch:20},{wch:10}, ...Array(10).fill({wch:7}), {wch:8},{wch:8},{wch:10},{wch:8}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Production Sheet');
+  XLSX.writeFile(wb, `Production_Sheet_${line}_${date}.xlsx`);
 }
 
 async function loadProductionLayout() {
@@ -955,6 +1106,8 @@ async function loadMachineGaugeOptions() {
   } catch (err) { /* non-critical, dropdown just stays empty */ }
 }
 
+let editingStagingIndex = null; // index of the staging row currently being edited in-place (null = adding a new row)
+
 function addBreakdownRow() {
   const operation = document.getElementById('ob_operation').value.trim();
   const machine = document.getElementById('ob_machine').value.trim();
@@ -964,13 +1117,22 @@ function addBreakdownRow() {
 
   if (!operation || !smv || parseFloat(smv) <= 0) { showToast('Operation name and a valid SMV are required', 'error'); return; }
 
-  obStagingRows.push({
+  const rowData = {
     machine_name: machine || null,
     gauge_guide: gauge || null,
     operation_name: operation,
     frequency: frequency ? parseInt(frequency, 10) : null,
     smv: parseFloat(smv)
-  });
+  };
+
+  if (editingStagingIndex !== null) {
+    // Editing an existing row — replace it in place, SL number (position) stays the same
+    obStagingRows[editingStagingIndex] = rowData;
+    editingStagingIndex = null;
+    document.getElementById('obAddRowBtn').textContent = '+ Add Row';
+  } else {
+    obStagingRows.push(rowData);
+  }
 
   document.getElementById('ob_operation').value = '';
   document.getElementById('ob_machine').value = '';
@@ -982,8 +1144,30 @@ function addBreakdownRow() {
   renderStagingTable();
 }
 
+// Loads a staging row's values back into the Add Operation Row form for editing.
+// Submitting (Add Row) will then update that same row instead of appending a new one.
+function editStagingRow(index) {
+  const row = obStagingRows[index];
+  document.getElementById('ob_operation').value = row.operation_name;
+  document.getElementById('ob_machine').value = row.machine_name || '';
+  document.getElementById('ob_gauge').value = row.gauge_guide || '';
+  document.getElementById('ob_frequency').value = row.frequency ?? '';
+  document.getElementById('ob_smv').value = row.smv;
+  editingStagingIndex = index;
+  document.getElementById('obAddRowBtn').textContent = `Update Row ${index + 1}`;
+  document.getElementById('ob_operation').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('ob_operation').focus();
+}
+
 function removeStagingRow(index) {
   obStagingRows.splice(index, 1);
+  if (editingStagingIndex === index) {
+    // The row being edited was removed — reset the form back to "Add" mode
+    editingStagingIndex = null;
+    document.getElementById('obAddRowBtn').textContent = '+ Add Row';
+    document.getElementById('ob_operation').value = ''; document.getElementById('ob_machine').value = '';
+    document.getElementById('ob_gauge').value = ''; document.getElementById('ob_frequency').value = ''; document.getElementById('ob_smv').value = '';
+  }
   renderStagingTable();
 }
 
@@ -996,7 +1180,7 @@ function renderStagingTable() {
     tbody.innerHTML = obStagingRows.map((row, idx) => `
       <tr>
         <td>${idx + 1}</td><td>${row.machine_name || '-'}</td><td>${row.gauge_guide || '-'}</td><td>${row.operation_name}</td><td>${row.frequency ?? '-'}</td><td>${row.smv.toFixed(3)}</td>
-        <td><button type="button" class="btn-sm btn-delete" onclick="removeStagingRow(${idx})">Remove</button></td>
+        <td><div class="action-btns"><button type="button" class="btn-sm btn-edit" onclick="editStagingRow(${idx})">Update</button><button type="button" class="btn-sm btn-delete" onclick="removeStagingRow(${idx})">Remove</button></div></td>
       </tr>
     `).join('');
   }
@@ -1059,6 +1243,8 @@ async function editSam(id) {
     if (!result.success) { showToast('Could not load sheet', 'error'); return; }
     const sheet = result.data;
     obEditingId = id;
+    editingStagingIndex = null;
+    document.getElementById('obAddRowBtn').textContent = '+ Add Row';
     document.getElementById('ob_buyer').value = sheet.buyer_name || '';
     document.getElementById('ob_style').value = sheet.style_name || '';
     document.getElementById('ob_item').value = sheet.item || '';
@@ -1076,7 +1262,8 @@ async function editSam(id) {
 }
 
 function resetSamForm() {
-  obEditingId = null; obStagingRows = [];
+  obEditingId = null; obStagingRows = []; editingStagingIndex = null;
+  document.getElementById('obAddRowBtn').textContent = '+ Add Row';
   document.getElementById('ob_buyer').value = ''; document.getElementById('ob_style').value = '';
   document.getElementById('ob_item').value = ''; document.getElementById('ob_size').value = '';
   renderStagingTable();
@@ -1136,7 +1323,7 @@ function buildBreakdownPrintHtml(sheet) {
       <table>
         <thead><tr><th>SL NO</th><th>MACHINE NAME</th><th>TYPE OF GAGE GUIDE</th><th>OPERATION</th><th>FREQUENCY</th><th>SMV</th></tr></thead>
         <tbody>${rows}</tbody>
-        <tfoot><tr><td colspan="5" style="text-align:right;">TOTAL SMV</td><td style="text-align:center;">${total.toFixed(3)}</td></tr></tfoot>
+        <tfoot><tr><td colspan="5" style="text-align:right;">TOTAL SEWING SMV</td><td style="text-align:center;">${total.toFixed(3)}</td></tr></tfoot>
       </table>
     </body></html>
   `;
@@ -1171,7 +1358,7 @@ async function downloadBreakdownExcel(id) {
       ['SIZE', sheet.size || ''],
       ['SL NO', 'MACHINE NAME', 'TYPE OF GAGE GUIDE', 'OPERATION', 'FREQUENCY', 'SMV'],
       ...sheet.items.map(it => [it.sl_no, it.machine_name || '', it.gauge_guide || '', it.operation_name, it.frequency ?? '', parseFloat(it.smv)]),
-      ['', '', '', '', 'TOTAL SMV', total.toFixed(3)]
+      ['', '', '', '', 'TOTAL SEWING SMV', total.toFixed(3)]
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{wch:8},{wch:20},{wch:20},{wch:35},{wch:12},{wch:10}];
