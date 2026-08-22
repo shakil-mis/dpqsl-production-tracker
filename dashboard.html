@@ -31,18 +31,56 @@
     --dash-green: #22c55e;
     --dash-yellow: #eab308;
     --dash-red: #ef4444;
+    --dash-grad-1: #101830;
+    --dash-grad-2: #0a0e1a;
+    --dash-grad-3: #060810;
+  }
+  body.theme-light {
+    --dash-bg-1: #eef1f6;
+    --dash-card: #ffffff;
+    --dash-card-2: #f6f8fb;
+    --dash-border: #dfe4ee;
+    --dash-text: #1e2532;
+    --dash-muted: #6b7488;
+    --dash-gold: #b8860b;
+    --dash-cyan: #0d84a8;
+    --dash-green: #15803d;
+    --dash-yellow: #b45309;
+    --dash-red: #dc2626;
+    --dash-grad-1: #f7f9fc;
+    --dash-grad-2: #eef1f6;
+    --dash-grad-3: #e5e9f2;
   }
   .dashboard-view {
     display: flex; position: fixed; inset: 0; flex-direction: column;
-    background: radial-gradient(circle at top left, #101830 0%, var(--dash-bg-1) 55%, #060810 100%);
+    background: radial-gradient(circle at top left, var(--dash-grad-1) 0%, var(--dash-grad-2) 55%, var(--dash-grad-3) 100%);
     color: var(--dash-text); padding: 2vh 2vw; overflow: hidden;
   }
-  .dash-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.6vh; padding-bottom: 1.2vh; border-bottom: 1px solid var(--dash-border); }
+  .theme-toggle-btn {
+    background: var(--dash-card); border: 1px solid var(--dash-border); color: var(--dash-text);
+    width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 0.9vw;
+    display: flex; align-items: center; justify-content: center; margin-left: 10px;
+  }
+
+  /* ---------- KPI SUMMARY ROW ---------- */
+  .dash-kpi-row { flex: 0 0 auto; display: flex; gap: 0.9vw; margin-bottom: 1.2vh; }
+  .kpi-card {
+    flex: 1; background: var(--dash-card); border: 1px solid var(--dash-border); border-top: 3px solid var(--kpi-accent, var(--dash-cyan));
+    border-radius: 10px; padding: 0.9vh 1vw; box-shadow: 0 4px 14px rgba(0,0,0,0.25); min-width: 0;
+  }
+  .kpi-label { font-size: 0.62vw; font-weight: 700; color: var(--dash-muted); letter-spacing: 0.4px; display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-value { font-size: 1.3vw; font-weight: 800; color: var(--dash-text); margin-top: 2px; white-space: nowrap; }
+  .kpi-value .kpi-sub-pct { font-size: 0.72vw; font-weight: 700; color: var(--dash-muted); margin-left: 4px; }
+  .kpi-extra { font-size: 0.6vw; margin-top: 3px; color: var(--dash-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-extra.neg { color: var(--dash-red); }
+
+  .dash-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2vh; padding-bottom: 1vh; border-bottom: 1px solid var(--dash-border); }
   .dash-logo { font-size: 1vw; font-weight: 800; letter-spacing: 1px; color: var(--dash-text); display: flex; align-items: center; gap: 10px; }
   .dash-logo .bolt { color: var(--dash-gold); }
+  .dash-header-right { display: flex; align-items: center; }
   .dash-datetime { font-size: 0.80vw; font-weight: 600; color: var(--dash-muted); background: var(--dash-card); padding: 2px 8px; border-radius: 8px; border: 1px solid var(--dash-border); white-space: nowrap; }
 
-  .dash-top-row { display: flex; gap: 1.4vw; flex: 0 0 20%; min-height: 128px; margin-bottom: 1.2vh; }
+  .dash-top-row { display: flex; gap: 1.4vw; flex: 0 0 32%; min-height: 190px; margin-bottom: 1.2vh; }
   .dash-panel { background: var(--dash-card); border: 1px solid var(--dash-border); border-radius: 14px; padding: 1.2vh 1.4vw; display: flex; flex-direction: column; box-shadow: 0 8px 24px rgba(0,0,0,0.35); overflow: hidden; }
   .dash-panel-title { font-size: 1.05vw; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 1vh; display: flex; align-items: center; gap: 8px; padding-bottom: 0.8vh; flex-shrink: 0; }
   .dash-panel-title.gold { color: var(--dash-gold); border-bottom: 2px solid rgba(244,196,48,0.3); }
@@ -77,24 +115,24 @@
 
   .top-avatar-wrap { position: relative; flex-shrink: 0; }
   .top-avatar-inner { position: relative; display: block; }
-  .top-avatar { width: 46px; height: 46px; border-radius: 8px; object-fit: cover; background: #1c2340; display: block; border: 2px solid rgba(255,255,255,0.08); }
-  .top-card.center .top-avatar { width: 60px; height: 60px; border-radius: 10px; }
+  .top-avatar { width: 72px; height: 72px; border-radius: 10px; object-fit: cover; background: #1c2340; display: block; border: 2px solid rgba(255,255,255,0.08); }
+  .top-card.center .top-avatar { width: 96px; height: 96px; border-radius: 12px; }
   .top-medal {
-    position: absolute; top: -7px; right: -7px; width: 22px; height: 22px;
+    position: absolute; top: -7px; right: -7px; width: 26px; height: 26px;
     border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    font-size: 6.5px; font-weight: 800; color: #1a1d29; border: 1.5px solid var(--dash-card-2); box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    font-size: 7.5px; font-weight: 800; color: #1a1d29; border: 1.5px solid var(--dash-card-2); box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   }
   .top-medal.rank-0 { background: linear-gradient(135deg, #ffe27a, #f4b400); }
   .top-medal.rank-1 { background: linear-gradient(135deg, #dfe4ea, #a9b1bd); }
   .top-medal.rank-2 { background: linear-gradient(135deg, #e3a25f, #b06a30); }
 
   .top-details-bottom { text-align: left; min-width: 0; flex: 1; }
-  .top-name { font-size: 0.78vw; font-weight: 800; color: var(--dash-text); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .top-card.center .top-name { font-size: 0.95vw; }
-  .top-sub-info { font-size: 0.62vw; color: var(--dash-cyan); font-weight: 600; text-align: left; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .top-card.center .top-sub-info { font-size: 0.75vw; }
-  .top-eff { font-size: 0.68vw; color: var(--dash-green); font-weight: 800; text-align: left; margin-top: 4px; }
-  .top-card.center .top-eff { font-size: 0.85vw; }
+  .top-name { font-size: 0.9vw; font-weight: 800; color: var(--dash-text); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .top-card.center .top-name { font-size: 1.1vw; }
+  .top-sub-info { font-size: 0.72vw; color: var(--dash-cyan); font-weight: 600; text-align: left; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .top-card.center .top-sub-info { font-size: 0.85vw; }
+  .top-eff { font-size: 0.78vw; color: var(--dash-green); font-weight: 800; text-align: left; margin-top: 5px; }
+  .top-card.center .top-eff { font-size: 0.95vw; }
 
   .low-perf-panel { flex: 0.8; }
   .low-perf-slider-container { width: 100%; overflow: hidden; flex: 1; position: relative; }
@@ -104,10 +142,10 @@
     background: var(--dash-card-2); border: 1px solid var(--dash-border); border-radius: 8px;
     padding: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
   }
-  .low-perf-card img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; margin-bottom: 3px; border: 2px solid var(--dash-red); }
-  .low-perf-card .lp-name { font-size: 0.72vw; font-weight: 700; color: var(--dash-text); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .low-perf-card .lp-id { font-size: 0.58vw; color: var(--dash-cyan); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .low-perf-card .lp-eff { font-size: 0.72vw; color: var(--dash-red); font-weight: 800; margin-top: 2px; }
+  .low-perf-card img { width: 54px; height: 54px; border-radius: 10px; object-fit: cover; margin-bottom: 5px; border: 2px solid var(--dash-red); }
+  .low-perf-card .lp-name { font-size: 0.82vw; font-weight: 700; color: var(--dash-text); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .low-perf-card .lp-id { font-size: 0.66vw; color: var(--dash-cyan); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .low-perf-card .lp-eff { font-size: 0.82vw; color: var(--dash-red); font-weight: 800; margin-top: 3px; }
 
   .dash-bottom-section { flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; background: var(--dash-card); border-radius: 14px; padding: 1.6vh 1.6vw; border: 1px solid var(--dash-border); }
   .dash-line-header { flex: 0 0 auto; text-align: center; margin-bottom: 1.2vh; }
@@ -141,8 +179,13 @@
 <div id="dashboardView" class="dashboard-view">
   <div class="dash-header">
     <div class="dash-logo"><span class="bolt">⚡</span> OPERATOR PERFORMANCE TRACKING</div>
-    <div class="dash-datetime" id="dashDateTime">--</div>
+    <div class="dash-header-right">
+      <div class="dash-datetime" id="dashDateTime">--</div>
+      <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Switch theme">🌙</button>
+    </div>
   </div>
+
+  <div class="dash-kpi-row" id="dashKpiRow"></div>
 
   <div class="dash-top-row">
     <div class="dash-panel top-performers-panel">
@@ -195,6 +238,20 @@ let dashboardTableScrollTimer = null;
 let lowPerfInterval = null;
 let lowPerfIndex = 0;
 
+// ---------------- THEME (Dark / Light toggle, remembered per device) ----------------
+function applyStoredTheme() {
+  const saved = localStorage.getItem('dashboardTheme') || 'dark';
+  document.body.classList.toggle('theme-light', saved === 'light');
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) btn.textContent = saved === 'light' ? '☀️' : '🌙';
+}
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('theme-light');
+  localStorage.setItem('dashboardTheme', isLight ? 'light' : 'dark');
+  document.getElementById('themeToggleBtn').textContent = isLight ? '☀️' : '🌙';
+}
+applyStoredTheme();
+
 function updateDashDateTime() {
   const now = new Date();
   document.getElementById('dashDateTime').textContent = `${now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }).toUpperCase()} | ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
@@ -210,8 +267,9 @@ async function loadDashboardData() {
     document.getElementById('offlinePill').style.display = 'none';
 
     if (!result.success) return;
-    const { topPerformers, lowPerformers, productionSummary } = result.data;
+    const { topPerformers, lowPerformers, productionSummary, kpis } = result.data;
 
+    renderKpiRow(kpis);
     renderTopPerformers(topPerformers);
     renderLowPerformers(lowPerformers);
 
@@ -230,6 +288,50 @@ async function loadDashboardData() {
     console.error('Dashboard data load failed:', err);
     document.getElementById('offlinePill').style.display = 'block';
   }
+}
+
+function renderKpiRow(k) {
+  const wrap = document.getElementById('dashKpiRow');
+  if (!k) { wrap.innerHTML = ''; return; }
+
+  const fmt = (n) => (n || 0).toLocaleString('en-US');
+
+  wrap.innerHTML = `
+    <div class="kpi-card" style="--kpi-accent: var(--dash-cyan);">
+      <div class="kpi-label">📊 TOTAL LINES</div>
+      <div class="kpi-value">${k.total_lines}</div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--dash-green);">
+      <div class="kpi-label">✅ ACHIEVED LINES</div>
+      <div class="kpi-value">${k.achieved_lines}<span class="kpi-sub-pct">${k.achieved_pct}%</span></div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--dash-yellow);">
+      <div class="kpi-label">⚠️ WARNING LINES</div>
+      <div class="kpi-value">${k.warning_lines}<span class="kpi-sub-pct">${k.warning_pct}%</span></div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--dash-red);">
+      <div class="kpi-label">⛔ CRITICAL LINES</div>
+      <div class="kpi-value">${k.critical_lines}<span class="kpi-sub-pct">${k.critical_pct}%</span></div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: #f97316;">
+      <div class="kpi-label">👥 TOTAL MANPOWER</div>
+      <div class="kpi-value">${fmt(k.total_manpower)}</div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--dash-cyan);">
+      <div class="kpi-label">🎯 TOTAL TARGET</div>
+      <div class="kpi-value">${fmt(k.total_target)}</div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: var(--dash-green);">
+      <div class="kpi-label">📈 TOTAL OUTPUT</div>
+      <div class="kpi-value">${fmt(k.total_output)}</div>
+      <div class="kpi-extra ${k.output_shortfall > 0 ? 'neg' : ''}">${k.output_shortfall > 0 ? `↘ Less: ${fmt(k.output_shortfall)}` : '✓ Target met'}</div>
+    </div>
+    <div class="kpi-card" style="--kpi-accent: #a855f7;">
+      <div class="kpi-label">◔ OVERALL EFFICIENCY</div>
+      <div class="kpi-value">${k.overall_efficiency}%</div>
+      <div class="kpi-extra ${k.efficiency_gap > 0 ? 'neg' : ''}">${k.efficiency_gap > 0 ? `↘ Less: ${k.efficiency_gap}%` : '✓ On target'} &nbsp;|&nbsp; Avg IE Target: ${k.avg_ie_target}%</div>
+    </div>
+  `;
 }
 
 function renderTopPerformers(list) {

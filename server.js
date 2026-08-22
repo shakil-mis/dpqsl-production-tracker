@@ -659,6 +659,58 @@ async function getProductionSummary(date) {
     return summaryData;
 }
 
+// ==========================================
+// 📊 DASHBOARD KPI BAR — derived entirely from the productionSummary data
+// already fetched above (no extra per-line queries). Thresholds used:
+// Achieved = line efficiency >= 90% | Warning = 60–89% | Critical = < 60%
+// (adjust these two numbers below if you'd like different cutoffs)
+// ==========================================
+const KPI_ACHIEVED_THRESHOLD = 90;
+const KPI_WARNING_THRESHOLD = 60;
+
+function computeDashboardKPIs(summaryData, avgIeTarget) {
+    const totalLines = summaryData.length;
+    let achievedLines = 0, warningLines = 0, criticalLines = 0;
+    let totalManpower = 0, totalTarget = 0, totalOutput = 0;
+    let totalEarnedMinutes = 0, totalNetMinutes = 0;
+
+    summaryData.forEach(line => {
+        if (line.line_efficiency >= KPI_ACHIEVED_THRESHOLD) achievedLines++;
+        else if (line.line_efficiency >= KPI_WARNING_THRESHOLD) warningLines++;
+        else criticalLines++;
+
+        line.operators.forEach(op => {
+            totalManpower++;
+            const activeHours = op.active_hours || 0;
+            const sam = parseFloat(op.sam_value) || 0;
+            const totalProd = op.total_prod || 0;
+            const defect = op.total_defect || 0;
+            const downtime = op.downtime_minute || 0;
+            totalTarget += (op.hourly_target || 0) * activeHours;
+            totalOutput += totalProd;
+            totalNetMinutes += (activeHours * 60) - downtime;
+            totalEarnedMinutes += (totalProd - defect) * sam;
+        });
+    });
+
+    const overallEfficiency = totalNetMinutes > 0 ? (totalEarnedMinutes / totalNetMinutes) * 100 : 0;
+    const pct = (count) => totalLines > 0 ? (count / totalLines) * 100 : 0;
+
+    return {
+        total_lines: totalLines,
+        achieved_lines: achievedLines, achieved_pct: Math.round(pct(achievedLines) * 100) / 100,
+        warning_lines: warningLines, warning_pct: Math.round(pct(warningLines) * 100) / 100,
+        critical_lines: criticalLines, critical_pct: Math.round(pct(criticalLines) * 100) / 100,
+        total_manpower: totalManpower,
+        total_target: Math.round(totalTarget),
+        total_output: Math.round(totalOutput),
+        output_shortfall: Math.round(totalTarget - totalOutput),
+        overall_efficiency: Math.round(overallEfficiency * 100) / 100,
+        avg_ie_target: Math.round((avgIeTarget || 0) * 100) / 100,
+        efficiency_gap: Math.round((avgIeTarget - overallEfficiency) * 100) / 100
+    };
+}
+
 app.get('/api/dashboard/top-performers', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 'LINE_SUPERVISOR'), async (req, res) => {
     try {
         res.json({ success: true, data: await getTopPerformers() });
@@ -687,12 +739,15 @@ app.get('/api/dashboard/production-summary', verifyToken, authorizeRoles('ADMIN'
 app.get('/api/public/dashboard-data', async (req, res) => {
     try {
         const today = req.query.date || new Date().toISOString().split('T')[0];
-        const [topPerformers, lowPerformers, productionSummary] = await Promise.all([
+        const [topPerformers, lowPerformers, productionSummary, avgIeResult] = await Promise.all([
             getTopPerformers(),
             getLowPerformers(),
-            getProductionSummary(today)
+            getProductionSummary(today),
+            pool.query('SELECT AVG(ie_eff_pct) AS avg_eff FROM operator_assignments')
         ]);
-        res.json({ success: true, data: { topPerformers, lowPerformers, productionSummary } });
+        const avgIeTarget = parseFloat(avgIeResult.rows[0].avg_eff) || 0;
+        const kpis = computeDashboardKPIs(productionSummary, avgIeTarget);
+        res.json({ success: true, data: { topPerformers, lowPerformers, productionSummary, kpis } });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
