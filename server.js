@@ -439,15 +439,49 @@ app.delete('/api/operation-breakdowns/:id', verifyToken, authorizeRoles('ADMIN',
     }
 });
 
+// ==========================================
+// ⏱️ CYCLE TIME STUDY — shared calculation helper
+// Given a list of operator_assignments rows (already filtered to one Line, or one Line+Style),
+// computes per-row: avg cycle time, tact time, capacity, and "Number of Avg" (the average
+// divided by however many OTHER operators on the same Line+Style are doing the identical
+// Operation — so two people sharing one operation each carry half the tact-time weight).
+// ==========================================
+function attachCycleTimeCalcs(rows) {
+    // Count how many rows share the same (line_name, style_name, operation_name) combo
+    const operationCounts = {};
+    rows.forEach(r => {
+        const key = `${r.line_name}|${r.style_name}|${r.operation_name}`;
+        operationCounts[key] = (operationCounts[key] || 0) + 1;
+    });
+
+    return rows.map(r => {
+        const readings = [r.cycle_time_1, r.cycle_time_2, r.cycle_time_3, r.cycle_time_4, r.cycle_time_5]
+            .map(v => parseFloat(v)).filter(v => !isNaN(v) && v > 0);
+
+        const avg = readings.length > 0 ? readings.reduce((a, b) => a + b, 0) / readings.length : 0;
+        const tactTime = avg / 60;
+        const capacity = avg > 0 ? 3600 / avg : 0;
+
+        const key = `${r.line_name}|${r.style_name}|${r.operation_name}`;
+        const sharedCount = operationCounts[key] || 1;
+        const numberOfAvg = avg / sharedCount;
+        const avgTactTime = numberOfAvg / 60;
+
+        return { ...r, cycle_avg: round2(avg), tact_time: round2(tactTime), capacity: round2(capacity), number_of_avg: round2(numberOfAvg), avg_tact_time: round4(avgTactTime) };
+    });
+}
+function round2(n) { return Math.round((n || 0) * 100) / 100; }
+function round4(n) { return Math.round((n || 0) * 10000) / 10000; }
+
 app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
-    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value } = req.body;
+    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5 } = req.body;
     try {
         const checkDuplicate = await pool.query('SELECT * FROM operator_assignments WHERE office_id = $1 AND line_name = $2', [office_id, line_name]);
         if (checkDuplicate.rows.length > 0) return res.status(400).json({ success: false, message: 'Operator already assigned!' });
         const result = await pool.query(
-            `INSERT INTO operator_assignments (line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value]
+            `INSERT INTO operator_assignments (line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1 || null, cycle_time_2 || null, cycle_time_3 || null, cycle_time_4 || null, cycle_time_5 || null]
         );
         res.json({ success: true, message: 'Operator assigned successfully!', data: result.rows[0] });
     } catch (err) {
@@ -465,7 +499,7 @@ app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 
         const result = line
             ? await pool.query('SELECT * FROM operator_assignments WHERE line_name = $1 ORDER BY id ASC', [line])
             : await pool.query('SELECT * FROM operator_assignments ORDER BY id ASC');
-        res.json({ success: true, data: result.rows });
+        res.json({ success: true, data: attachCycleTimeCalcs(result.rows) });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
@@ -473,12 +507,13 @@ app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 
 
 app.put('/api/assignments/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     const { id } = req.params;
-    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value } = req.body;
+    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5 } = req.body;
     try {
         await pool.query(
-            `UPDATE operator_assignments SET line_name=$1, office_id=$2, operator_name=$3, designation=$4, style_name=$5, operation_name=$6, machine_name=$7, ie_eff_pct=$8, hourly_target=$9, sam_value=$10 
-             WHERE id=$11`,
-            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, id]
+            `UPDATE operator_assignments SET line_name=$1, office_id=$2, operator_name=$3, designation=$4, style_name=$5, operation_name=$6, machine_name=$7, ie_eff_pct=$8, hourly_target=$9, sam_value=$10,
+             cycle_time_1=$11, cycle_time_2=$12, cycle_time_3=$13, cycle_time_4=$14, cycle_time_5=$15
+             WHERE id=$16`,
+            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1 || null, cycle_time_2 || null, cycle_time_3 || null, cycle_time_4 || null, cycle_time_5 || null, id]
         );
         res.json({ success: true, message: 'Assignment updated successfully!' });
     } catch (err) {
@@ -490,6 +525,92 @@ app.delete('/api/assignments/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLAN
     try {
         await pool.query('DELETE FROM operator_assignments WHERE id = $1', [req.params.id]);
         res.json({ success: true, message: 'Assignment removed successfully!' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// ==========================================
+// 📐 LINE STUDY (Cycle Time Study / Line Balancing Summary)
+// One header per Line + Style, combining: auto-calculated values (from the
+// operators' stopwatch readings) + manually-entered planning fields.
+// ==========================================
+app.get('/api/line-study', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
+    const { line, style } = req.query;
+    if (!line || !style) return res.status(400).json({ success: false, message: 'line and style query params are required.' });
+    try {
+        const assignRows = await pool.query('SELECT * FROM operator_assignments WHERE line_name = $1 AND style_name = $2 ORDER BY id ASC', [line, style]);
+        const operators = attachCycleTimeCalcs(assignRows.rows);
+
+        const headerResult = await pool.query('SELECT * FROM line_study_headers WHERE line_name = $1 AND style_name = $2', [line, style]);
+        const header = headerResult.rows[0] || {
+            line_name: line, style_name: style, order_qty: null, allocated_qty: null, plan_effi: null,
+            input_date: null, output_date: null, graph_type: null, tgt_hour: null, per_hour_tgt: null,
+            current_pcs: null, acvd_effi: null, dhu: null, observer_officer: null
+        };
+
+        // Buyer + SMV are pulled automatically from the matching Operation Breakdown sheet, if one exists
+        const breakdownResult = await pool.query('SELECT buyer_name, id FROM operation_breakdowns WHERE style_name = $1 LIMIT 1', [style]);
+        let buyerName = null, totalSmv = 0;
+        if (breakdownResult.rows.length > 0) {
+            buyerName = breakdownResult.rows[0].buyer_name;
+            const smvResult = await pool.query('SELECT COALESCE(SUM(smv),0) AS total FROM operation_breakdown_items WHERE breakdown_id = $1', [breakdownResult.rows[0].id]);
+            totalSmv = parseFloat(smvResult.rows[0].total) || 0;
+        }
+
+        // ---- Auto-calculated summary values ----
+        const noOfWorker = operators.length;
+        const tactTime = operators.reduce((sum, op) => sum + (op.avg_tact_time || 0), 0);
+        const bpt = noOfWorker > 0 ? (tactTime / noOfWorker) * 60 : 0;
+        const workerPotentialPcsHr = bpt > 0 ? 3600 / bpt : 0;
+        const tgtHour = parseFloat(header.tgt_hour) || 0;
+        const workerPotentialPcs08hr = workerPotentialPcsHr * tgtHour;
+        const hpt = bpt * 1.05;
+        const lpt = bpt > 0 ? bpt / 1.05 : 0;
+        const perHourTgt = parseFloat(header.per_hour_tgt) || 0;
+        const perProcessNeed = perHourTgt > 0 ? 3600 / perHourTgt : 0;
+        const currentPcs = parseFloat(header.current_pcs) || 0;
+        const workerPerfPct = workerPotentialPcsHr > 0 ? (currentPcs / workerPotentialPcsHr) * 100 : 0;
+        const productivityGapPct = workerPotentialPcsHr > 0 ? ((workerPotentialPcsHr - currentPcs) / workerPotentialPcsHr) * 100 : 0;
+
+        res.json({
+            success: true,
+            data: {
+                line_name: line, style_name: style,
+                buyer_name: buyerName, smv: round2(totalSmv),
+                no_of_worker: noOfWorker,
+                order_qty: header.order_qty, allocated_qty: header.allocated_qty, plan_effi: header.plan_effi,
+                input_date: header.input_date, output_date: header.output_date, graph_type: header.graph_type,
+                tgt_hour: header.tgt_hour, per_hour_tgt: header.per_hour_tgt, current_pcs: header.current_pcs,
+                acvd_effi: header.acvd_effi, dhu: header.dhu, observer_officer: header.observer_officer,
+                tact_time: round4(tactTime), bpt: round2(bpt),
+                worker_potential_pcs_hr: round2(workerPotentialPcsHr), worker_potential_pcs_08hr: round2(workerPotentialPcs08hr),
+                hpt: round2(hpt), lpt: round2(lpt), per_process_need: round2(perProcessNeed),
+                worker_perf_pct: round2(workerPerfPct), productivity_gap_pct: round2(productivityGapPct),
+                operators
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Upsert the manually-entered header fields for one Line + Style
+app.put('/api/line-study', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
+    const { line, style } = req.query;
+    if (!line || !style) return res.status(400).json({ success: false, message: 'line and style query params are required.' });
+    const { order_qty, allocated_qty, plan_effi, input_date, output_date, graph_type, tgt_hour, per_hour_tgt, current_pcs, acvd_effi, dhu, observer_officer } = req.body;
+    try {
+        await pool.query(
+            `INSERT INTO line_study_headers (line_name, style_name, order_qty, allocated_qty, plan_effi, input_date, output_date, graph_type, tgt_hour, per_hour_tgt, current_pcs, acvd_effi, dhu, observer_officer, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+             ON CONFLICT (line_name, style_name) DO UPDATE SET
+                order_qty=$3, allocated_qty=$4, plan_effi=$5, input_date=$6, output_date=$7, graph_type=$8,
+                tgt_hour=$9, per_hour_tgt=$10, current_pcs=$11, acvd_effi=$12, dhu=$13, observer_officer=$14, updated_at=NOW()`,
+            [line, style, order_qty || null, allocated_qty || null, plan_effi || null, input_date || null, output_date || null,
+             graph_type || null, tgt_hour || null, per_hour_tgt || null, current_pcs || null, acvd_effi || null, dhu || null, observer_officer || null]
+        );
+        res.json({ success: true, message: 'Line study header saved successfully!' });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
