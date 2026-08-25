@@ -1019,12 +1019,12 @@ async function loadProductionLayout() {
       empty.style.display = 'none';
       tbody.innerHTML = lineOperators.map((row) => {
         const target = row.hourly_target || 0;
-        const samVal = row.sam_value || 0.0;
+        const capacityVal = row.capacity || 0;
         const saved = savedRecordsMap[row.office_id] || {};
         const getHourVal = (val) => (val === 0 || val === undefined || val === null) ? '' : val;
         
         return `
-          <tr data-office-id="${row.office_id}" data-target="${target}" data-sam="${samVal}" data-line="${row.line_name}">
+          <tr data-office-id="${row.office_id}" data-target="${target}" data-capacity="${capacityVal}" data-line="${row.line_name}">
             <td><span class="badge badge-line">${row.line_name}</span></td>
             <td><img class="avatar" src="${opPhotoUrl(row.office_id)}" onerror="this.src='${BASE_URL}/uploads/default.jpg'"></td>
             <td><strong>${row.office_id}</strong></td>
@@ -1058,7 +1058,7 @@ async function loadProductionLayout() {
 
 function calculateRowPerformance(inputNode) {
   const tr = inputNode.closest('tr');
-  const sam = parseFloat(tr.getAttribute('data-sam')) || 0.0;
+  const capacity = parseFloat(tr.getAttribute('data-capacity')) || 0.0;
   const inputs = tr.querySelectorAll('.prod-hr-input');
   const defect = parseFloat(tr.querySelector('.total-defect').value) || 0;
   const downtime = parseFloat(tr.querySelector('.downtime-minute').value) || 0;
@@ -1075,16 +1075,17 @@ function calculateRowPerformance(inputNode) {
   tr.setAttribute('data-active-hours', activeHours);
   
   const netMinutes = (activeHours * 60) - downtime;
+  const expectedOutput = capacity * (netMinutes / 60);
   const effCell = tr.querySelector('.eff-cell');
 
-  if(netMinutes > 0 && totalProd > 0 && sam > 0) {
-    const finalEff = Math.round((((totalProd - defect) * sam) / netMinutes) * 100);
+  if(netMinutes > 0 && totalProd > 0 && expectedOutput > 0) {
+    const finalEff = Math.round(((totalProd - defect) / expectedOutput) * 100);
     effCell.textContent = `${finalEff > 0 ? finalEff : 0}%`;
     if(finalEff >= 85) { effCell.style.background = '#dcfce7'; effCell.style.color = '#15803d'; } 
     else if(finalEff >= 65) { effCell.style.background = '#fef9c3'; effCell.style.color = '#a16207'; } 
     else { effCell.style.background = '#fce8e6'; effCell.style.color = '#e5484d'; }
   } else {
-    effCell.textContent = '0%'; effCell.style.background = '#f3f4f6'; effCell.style.color = '#374151';
+    effCell.textContent = capacity > 0 ? '0%' : 'No Study'; effCell.style.background = '#f3f4f6'; effCell.style.color = '#374151';
   }
   updateLineSummaryWidget();
 }
@@ -1098,12 +1099,14 @@ function updateLineSummaryWidget() {
     const totalProd = parseFloat(tr.querySelector('.total-prod-cell').textContent) || 0;
     const defect = parseFloat(tr.querySelector('.total-defect').value) || 0;
     const downtime = parseFloat(tr.querySelector('.downtime-minute').value) || 0;
-    const sam = parseFloat(tr.getAttribute('data-sam')) || 0;
+    const capacity = parseFloat(tr.getAttribute('data-capacity')) || 0;
     const activeHours = parseInt(tr.getAttribute('data-active-hours'), 10) || 0;
 
-    if (!lineSummary[line]) lineSummary[line] = { totalEarnedMinutes: 0, totalAllocatedMinutes: 0, totalDowntime: 0, totalDefects: 0, operatorCount: 0 };
+    if (!lineSummary[line]) lineSummary[line] = { totalActualOutput: 0, totalExpectedOutput: 0, totalAllocatedMinutes: 0, totalDowntime: 0, totalDefects: 0, operatorCount: 0 };
 
-    lineSummary[line].totalEarnedMinutes += ((totalProd - defect) * sam);
+    const netMinutes = (activeHours * 60) - downtime;
+    lineSummary[line].totalActualOutput += (totalProd - defect);
+    lineSummary[line].totalExpectedOutput += capacity * (netMinutes / 60);
     lineSummary[line].totalAllocatedMinutes += (activeHours * 60);
     lineSummary[line].totalDowntime += downtime;
     lineSummary[line].totalDefects += defect;
@@ -1115,8 +1118,7 @@ function updateLineSummaryWidget() {
 
   Object.keys(lineSummary).forEach(line => {
     const data = lineSummary[line];
-    const netLineMinutes = data.totalAllocatedMinutes - data.totalDowntime;
-    let lineEff = (netLineMinutes > 0 && data.totalEarnedMinutes > 0) ? (data.totalEarnedMinutes / netLineMinutes) * 100 : 0;
+    let lineEff = (data.totalExpectedOutput > 0 && data.totalActualOutput > 0) ? (data.totalActualOutput / data.totalExpectedOutput) * 100 : 0;
 
     container.innerHTML = `
       <div style="padding: 12px; margin-bottom: 12px; background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px;">

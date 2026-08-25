@@ -135,7 +135,7 @@ app.get('/api/operators', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), a
                         SELECT 
                             CASE 
                                 WHEN SUM((pr.active_hours * 60) - pr.downtime_minute) > 0 
-                                THEN (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / SUM((pr.active_hours * 60) - pr.downtime_minute)) * 100
+                                THEN (SUM(pr.total_prod - pr.total_defect) * 60 / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute) * ${CAPACITY_SQL_AGG}, 0)) * 100
                                 ELSE 0 
                             END
                         FROM production_records pr
@@ -446,6 +446,15 @@ app.delete('/api/operation-breakdowns/:id', verifyToken, authorizeRoles('ADMIN',
 // divided by however many OTHER operators on the same Line+Style are doing the identical
 // Operation — so two people sharing one operation each carry half the tact-time weight).
 // ==========================================
+// Reusable SQL fragment: capacity (pcs/hr) computed from a joined "oa" (operator_assignments)
+// row's 5 stopwatch readings — 3600 / average of whichever readings were actually filled in.
+// Used everywhere efficiency is calculated, so Capacity (not the old SAM/Target) drives it.
+const CAPACITY_SQL = `(3600 / NULLIF((SELECT AVG(v) FROM unnest(ARRAY[oa.cycle_time_1, oa.cycle_time_2, oa.cycle_time_3, oa.cycle_time_4, oa.cycle_time_5]) AS v WHERE v > 0), 0))`;
+// Capacity is constant per operator+line+style group, but inside a GROUP BY query Postgres still
+// needs every non-aggregated expression wrapped in an aggregate — MAX() here doesn't change the
+// value (it's the same for every row in the group), it just satisfies that requirement.
+const CAPACITY_SQL_AGG = `MAX(${CAPACITY_SQL})`;
+
 function attachCycleTimeCalcs(rows) {
     // Count how many rows share the same (line_name, style_name, operation_name) combo
     const operationCounts = {};
@@ -677,7 +686,7 @@ async function getTopPerformers() {
             o.office_id, o.operator_name, o.line_name,
             ROUND(
                 COALESCE(
-                    (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100, 
+                    (SUM(pr.total_prod - pr.total_defect) * 60 / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute) * ${CAPACITY_SQL_AGG}, 0)) * 100, 
                     0
                 )::numeric, 1
             ) as efficiency
@@ -689,7 +698,7 @@ async function getTopPerformers() {
            -- 🎯 0.0% means no real production happened that period — exclude, don't rank as "top"
            AND ROUND(
                 COALESCE(
-                    (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100,
+                    (SUM(pr.total_prod - pr.total_defect) * 60 / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute) * ${CAPACITY_SQL_AGG}, 0)) * 100,
                     0
                 )::numeric, 1
            ) > 0
@@ -700,14 +709,14 @@ async function getTopPerformers() {
     return result.rows;
 }
 
-// ✅ UPDATED: Low performers are now only operators whose efficiency is genuinely below 60%
+// ✅ UPDATED: Low performers are now only operators whose efficiency is genuinely below 50%
 async function getLowPerformers() {
     const queryText = `
         SELECT 
             o.office_id, o.operator_name, o.line_name,
             ROUND(
                 COALESCE(
-                    (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100, 
+                    (SUM(pr.total_prod - pr.total_defect) * 60 / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute) * ${CAPACITY_SQL_AGG}, 0)) * 100, 
                     0
                 )::numeric, 1
             ) as efficiency
@@ -716,16 +725,16 @@ async function getLowPerformers() {
         JOIN operator_assignments oa ON oa.office_id = pr.office_id AND oa.line_name = pr.line_name
         GROUP BY o.office_id, o.operator_name, o.line_name
         HAVING SUM((pr.active_hours * 60) - pr.downtime_minute) > 0
-           -- 🎯 Only flag genuinely low (but real) performance: between 0% (exclusive) and 60%
+           -- 🎯 Only flag genuinely low (but real) performance: between 0% (exclusive) and 50%
            AND ROUND(
                 COALESCE(
-                    (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100,
+                    (SUM(pr.total_prod - pr.total_defect) * 60 / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute) * ${CAPACITY_SQL_AGG}, 0)) * 100,
                     0
                 )::numeric, 1
            ) > 0
            AND ROUND(
                 COALESCE(
-                    (SUM((pr.total_prod - pr.total_defect) * oa.sam_value) / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute), 0)) * 100,
+                    (SUM(pr.total_prod - pr.total_defect) * 60 / NULLIF(SUM((pr.active_hours * 60) - pr.downtime_minute) * ${CAPACITY_SQL_AGG}, 0)) * 100,
                     0
                 )::numeric, 1
            ) < 50
@@ -745,33 +754,35 @@ async function getProductionSummary(date) {
         const lineName = l.line_name;
         const records = await pool.query(`
             SELECT 
-                pr.*, oa.operator_name, oa.sam_value
+                pr.*, oa.operator_name, oa.sam_value,
+                ${CAPACITY_SQL} AS capacity
             FROM production_records pr
             JOIN operator_assignments oa ON oa.office_id = pr.office_id AND oa.line_name = pr.line_name
             WHERE pr.production_date = $1 AND pr.line_name = $2
         `, [date, lineName]);
 
-        let totalEarnedMinutes = 0;
-        let totalNetMinutes = 0;
+        let totalActualOutput = 0;
+        let totalExpectedOutput = 0;
 
         const operatorsFormatted = records.rows.map(rec => {
-            const sam = parseFloat(rec.sam_value) || 0;
+            const capacity = parseFloat(rec.capacity) || 0;
             const totalProd = rec.total_prod || 0;
             const defect = rec.total_defect || 0;
             const downtime = rec.downtime_minute || 0;
             const activeHours = rec.active_hours || 0;
             const netMins = (activeHours * 60) - downtime;
-            const earnedMins = (totalProd - defect) * sam;
+            const actualOutput = totalProd - defect;
+            const expectedOutput = capacity * (netMins / 60);
             let eff = 0;
-            if (netMins > 0 && earnedMins > 0) eff = Math.round((earnedMins / netMins) * 100);
-            totalEarnedMinutes += earnedMins;
-            totalNetMinutes += netMins;
+            if (netMins > 0 && expectedOutput > 0 && actualOutput > 0) eff = Math.round((actualOutput / expectedOutput) * 100);
+            totalActualOutput += actualOutput;
+            totalExpectedOutput += expectedOutput;
             return { ...rec, efficiency: eff };
         });
 
         let lineEff = 0;
-        if (totalNetMinutes > 0 && totalEarnedMinutes > 0) {
-            lineEff = Math.round((totalEarnedMinutes / totalNetMinutes) * 100);
+        if (totalExpectedOutput > 0 && totalActualOutput > 0) {
+            lineEff = Math.round((totalActualOutput / totalExpectedOutput) * 100);
         }
 
         summaryData.push({ line_name: lineName, line_efficiency: lineEff, operators: operatorsFormatted });
@@ -793,7 +804,7 @@ function computeDashboardKPIs(summaryData, avgIeTarget) {
     const totalLines = summaryData.length;
     let achievedLines = 0, warningLines = 0, criticalLines = 0;
     let totalManpower = 0, totalTarget = 0, totalOutput = 0;
-    let totalEarnedMinutes = 0, totalNetMinutes = 0;
+    let totalActualOutput = 0, totalExpectedOutput = 0;
 
     summaryData.forEach(line => {
         if (line.line_efficiency >= KPI_ACHIEVED_THRESHOLD) achievedLines++;
@@ -803,18 +814,19 @@ function computeDashboardKPIs(summaryData, avgIeTarget) {
         line.operators.forEach(op => {
             totalManpower++;
             const activeHours = op.active_hours || 0;
-            const sam = parseFloat(op.sam_value) || 0;
+            const downtime = op.downtime_minute || 0;
+            const capacity = parseFloat(op.capacity) || 0;
             const totalProd = op.total_prod || 0;
             const defect = op.total_defect || 0;
-            const downtime = op.downtime_minute || 0;
+            const netMins = (activeHours * 60) - downtime;
             totalTarget += (op.hourly_target || 0) * activeHours;
             totalOutput += totalProd;
-            totalNetMinutes += (activeHours * 60) - downtime;
-            totalEarnedMinutes += (totalProd - defect) * sam;
+            totalActualOutput += (totalProd - defect);
+            totalExpectedOutput += capacity * (netMins / 60);
         });
     });
 
-    const overallEfficiency = totalNetMinutes > 0 ? (totalEarnedMinutes / totalNetMinutes) * 100 : 0;
+    const overallEfficiency = totalExpectedOutput > 0 ? (totalActualOutput / totalExpectedOutput) * 100 : 0;
     const pct = (count) => totalLines > 0 ? (count / totalLines) * 100 : 0;
 
     return {
