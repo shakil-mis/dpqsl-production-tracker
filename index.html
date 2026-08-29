@@ -362,7 +362,7 @@
         <div class="form-grid">
           <div class="form-group">
             <label>Select Production Line</label>
-            <select id="assign_line">
+            <select id="assign_line" onchange="loadLineStudy()">
               <option value="">Select Line</option><option value="Line-01">Line-01</option><option value="Line-02">Line-02</option><option value="Line-03">Line-03</option><option value="Line-04">Line-04</option><option value="Line-05">Line-05</option><option value="Line-06">Line-06</option><option value="Line-07">Line-07</option><option value="Line-08">Line-08</option><option value="Line-09">Line-09</option><option value="Line-10">Line-10</option><option value="Line-11">Line-11</option><option value="Line-12">Line-12</option>
             </select>
           </div>
@@ -381,7 +381,7 @@
 
           <div class="form-group">
             <label>Select Style</label>
-            <select id="assign_style" onchange="populateOperationsLive()"><option value="">Select Style</option></select>
+            <select id="assign_style" onchange="populateOperationsLive(); loadLineStudy();"><option value="">Select Style</option></select>
           </div>
           <div class="form-group">
             <label>Select Operation</label>
@@ -454,15 +454,10 @@
     </div>
 
     <div class="card">
-      <h2 style="margin-bottom:14px;">📐 Line Balancing Summary</h2>
-      <div class="filter-grid" style="margin-bottom: 16px;">
-        <select id="ls_line" onchange="loadLineStudy()">
-          <option value="">Select Line</option><option value="Line-01">Line-01</option><option value="Line-02">Line-02</option><option value="Line-03">Line-03</option><option value="Line-04">Line-04</option><option value="Line-05">Line-05</option><option value="Line-06">Line-06</option><option value="Line-07">Line-07</option><option value="Line-08">Line-08</option><option value="Line-09">Line-09</option><option value="Line-10">Line-10</option><option value="Line-11">Line-11</option><option value="Line-12">Line-12</option>
-        </select>
-        <select id="ls_style" onchange="loadLineStudy()"><option value="">Select Style</option></select>
-      </div>
+      <h2 style="margin-bottom:6px;">📐 Line Balancing Summary</h2>
+      <p style="font-size:12.5px; color:var(--text-muted); margin-bottom:14px;">Automatically follows the Line + Style selected above — pick them once, then just keep adding operators. <span id="lsCurrentSelection" style="font-weight:600;"></span></p>
 
-      <div id="lineStudyEmpty" style="text-align:center; color:var(--text-muted); padding:20px; font-size:13.5px;">Select a Line and Style above to view/enter the balancing summary.</div>
+      <div id="lineStudyEmpty" style="text-align:center; color:var(--text-muted); padding:20px; font-size:13.5px;">Select a Line and Style in the form above to view/enter the balancing summary.</div>
 
       <div id="lineStudyContent" style="display:none;">
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:18px;">
@@ -1457,13 +1452,10 @@ async function downloadBreakdownExcel(id) {
 async function initAssignModule() {
   await loadOperators(); await loadSamRecords();
   const styleSelect = document.getElementById('assign_style');
-  const lsStyleSelect = document.getElementById('ls_style');
   styleSelect.innerHTML = '<option value="">Select Style</option>';
-  lsStyleSelect.innerHTML = '<option value="">Select Style</option>';
   allSams.forEach(sheet => {
     const label = sheet.size ? `${sheet.style_name} (${sheet.size})` : sheet.style_name;
     styleSelect.innerHTML += `<option value="${sheet.id}">${label}</option>`;
-    lsStyleSelect.innerHTML += `<option value="${sheet.style_name}">${label}</option>`;
   });
   await loadAssignments();
 }
@@ -1599,7 +1591,7 @@ document.getElementById('assignForm').addEventListener('submit', async (e) => {
     const method = isAssignEditMode ? 'PUT' : 'POST';
     const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const result = await res.json();
-    if(result.success) { showToast(result.message); resetAssignForm(); loadAssignments(); }
+    if(result.success) { showToast(result.message); resetAssignForm(); loadAssignments(); loadLineStudy(); }
     else showToast(result.message, 'error');
   } catch(err) { showToast('Operation failed', 'error'); }
 });
@@ -1630,18 +1622,28 @@ async function editAssignment(id) {
 }
 
 function resetAssignForm() {
-  document.getElementById('assignForm').reset(); isAssignEditMode = false; document.getElementById('assignId').value = '';
+  // Deliberately does NOT reset assign_line / assign_style — the user picks those once,
+  // then keeps adding operators to the same Line+Style without re-selecting every time.
+  isAssignEditMode = false; document.getElementById('assignId').value = '';
+  document.getElementById('assign_office_id').value = '';
+  document.getElementById('hidden_op_name').value = ''; document.getElementById('hidden_designation').value = '';
+  document.getElementById('assign_process').value = ''; document.getElementById('assign_machine').value = '';
+  document.getElementById('hidden_sam_value').value = '';
+  document.getElementById('assign_ie_eff').value = 100; document.getElementById('assign_hourly_target').value = '';
+  document.getElementById('ct_1').value = ''; document.getElementById('ct_2').value = ''; document.getElementById('ct_3').value = '';
+  document.getElementById('ct_4').value = ''; document.getElementById('ct_5').value = '';
   document.getElementById('assignFormTitle').textContent = 'Assign Operator to Production Line';
   document.getElementById('assignSubmitBtn').textContent = 'Add Operator to Line'; document.getElementById('assignCancelBtn').style.display = 'none';
   recalcCycleTimePreview();
   lookupOperatorLive();
+  document.getElementById('assign_office_id').focus();
 }
 
 async function deleteAssignment(id) {
   if(!confirm('Remove this operator?')) return;
   try {
     const res = await apiFetch(`${BASE_URL}/api/assignments/${id}`, { method: 'DELETE' });
-    if((await res.json()).success) { showToast('Operator Removed'); loadAssignments(); }
+    if((await res.json()).success) { showToast('Operator Removed'); loadAssignments(); loadLineStudy(); }
   } catch(err) { showToast('Delete failed', 'error'); }
 }
 
@@ -1722,13 +1724,26 @@ function downloadAssignMatrixExcel() {
 }
 
 // ---------------- LINE BALANCING SUMMARY (Cycle Time Study) ----------------
+// Follows whatever Line + Style is currently selected in the Assign Operator form above —
+// no separate selection needed.
+function getAssignFormLineStyle() {
+  const line = document.getElementById('assign_line').value;
+  const styleSelect = document.getElementById('assign_style');
+  const styleText = styleSelect.value ? styleSelect.selectedOptions[0]?.textContent.replace(/\s*\(.*\)$/, '') : '';
+  return { line, style: styleText };
+}
+
 async function loadLineStudy() {
-  const line = document.getElementById('ls_line').value;
-  const style = document.getElementById('ls_style').value;
+  const { line, style } = getAssignFormLineStyle();
   const empty = document.getElementById('lineStudyEmpty');
   const content = document.getElementById('lineStudyContent');
+  const selectionLabel = document.getElementById('lsCurrentSelection');
 
-  if (!line || !style) { empty.style.display = 'block'; content.style.display = 'none'; return; }
+  if (!line || !style) {
+    empty.style.display = 'block'; content.style.display = 'none'; selectionLabel.textContent = '';
+    return;
+  }
+  selectionLabel.textContent = `(Currently: ${line} — ${style})`;
 
   try {
     const res = await apiFetch(`${BASE_URL}/api/line-study?line=${encodeURIComponent(line)}&style=${encodeURIComponent(style)}`);
@@ -1751,6 +1766,8 @@ async function loadLineStudy() {
     document.getElementById('ls_workerPerf').textContent = `${d.worker_perf_pct}%`;
     document.getElementById('ls_prodGap').textContent = `${d.productivity_gap_pct}%`;
 
+    // Only fill the manual fields the first time (or if they're empty) — don't clobber
+    // what the user is actively typing if this reloads while they're mid-entry.
     document.getElementById('ls_orderQty').value = d.order_qty ?? '';
     document.getElementById('ls_allocatedQty').value = d.allocated_qty ?? '';
     document.getElementById('ls_planEffi').value = d.plan_effi ?? '';
@@ -1767,9 +1784,8 @@ async function loadLineStudy() {
 }
 
 async function saveLineStudy() {
-  const line = document.getElementById('ls_line').value;
-  const style = document.getElementById('ls_style').value;
-  if (!line || !style) { showToast('Select a Line and Style first', 'error'); return; }
+  const { line, style } = getAssignFormLineStyle();
+  if (!line || !style) { showToast('Select a Line and Style in the form above first', 'error'); return; }
 
   const payload = {
     order_qty: document.getElementById('ls_orderQty').value || null,
