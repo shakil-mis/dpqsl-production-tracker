@@ -176,3 +176,46 @@ BEGIN
 END $$;
 SELECT * FROM operation_breakdowns;
 SELECT * FROM operation_breakdown_items;
+
+-- ===============================================================
+-- MIGRATION: Cycle Time Study + Allowance-based Capacity
+-- Run this ONCE against your existing (live/Neon) database.
+-- Safe & non-destructive — IF NOT EXISTS everywhere, no data touched.
+--
+-- ⚠️ IMPORTANT: run this BEFORE deploying the new server.js. The capacity
+-- formula now reads operator_assignments.allowance_time, so the column
+-- must exist first or the efficiency queries will error.
+--
+-- New model (standard BD garments time study):
+--   Standard Time (sec) = AVG(cycle_time_1..5, only the ones filled in) + allowance_time
+--   Capacity (pcs/hr)   = 3600 / Standard Time      → this IS the Hourly Target now
+-- ===============================================================
+
+-- 1) The 5 stopwatch cycle readings (seconds) + fixed allowance (seconds), per assignment
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS cycle_time_1  NUMERIC(6,2);
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS cycle_time_2  NUMERIC(6,2);
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS cycle_time_3  NUMERIC(6,2);
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS cycle_time_4  NUMERIC(6,2);
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS cycle_time_5  NUMERIC(6,2);
+ALTER TABLE operator_assignments ADD COLUMN IF NOT EXISTS allowance_time NUMERIC(6,2) DEFAULT 0;
+
+-- 2) Line Balancing Summary header (one row per Line + Style) — manual planning fields
+CREATE TABLE IF NOT EXISTS line_study_headers (
+    id SERIAL PRIMARY KEY,
+    line_name       VARCHAR(50)  NOT NULL,
+    style_name      VARCHAR(100) NOT NULL,
+    order_qty       INT,
+    allocated_qty   INT,
+    plan_effi       NUMERIC(5,2),
+    input_date      DATE,
+    output_date     DATE,
+    graph_type      VARCHAR(50),
+    tgt_hour        NUMERIC(6,2),
+    per_hour_tgt    NUMERIC(8,2),
+    current_pcs     NUMERIC(8,2),
+    acvd_effi       NUMERIC(5,2),
+    dhu             NUMERIC(6,2),
+    observer_officer VARCHAR(100),
+    updated_at      TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT unique_line_style UNIQUE (line_name, style_name)
+);

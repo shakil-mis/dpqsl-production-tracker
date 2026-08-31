@@ -393,27 +393,28 @@
           </div>
 
           <div class="cycle-time-box" style="grid-column: span 2; background:#f8f9fb; border:1px dashed var(--border); border-radius:8px; padding:12px;">
-            <label style="display:block; margin-bottom:8px; font-weight:600; font-size:13px;">⏱️ Cycle Time Study (stopwatch, in seconds)</label>
+            <label style="display:block; margin-bottom:8px; font-weight:600; font-size:13px;">⏱️ Cycle Time Study (stopwatch, seconds) &nbsp;→&nbsp; Capacity = 3600 ÷ (Avg + Allowance)</label>
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
-              <div class="form-group" style="flex:1; min-width:70px;"><label style="font-size:11.5px;">1st</label><input type="number" step="0.01" id="ct_1" oninput="recalcCycleTimePreview()"></div>
-              <div class="form-group" style="flex:1; min-width:70px;"><label style="font-size:11.5px;">2nd</label><input type="number" step="0.01" id="ct_2" oninput="recalcCycleTimePreview()"></div>
-              <div class="form-group" style="flex:1; min-width:70px;"><label style="font-size:11.5px;">3rd</label><input type="number" step="0.01" id="ct_3" oninput="recalcCycleTimePreview()"></div>
-              <div class="form-group" style="flex:1; min-width:70px;"><label style="font-size:11.5px;">4th</label><input type="number" step="0.01" id="ct_4" oninput="recalcCycleTimePreview()"></div>
-              <div class="form-group" style="flex:1; min-width:70px;"><label style="font-size:11.5px;">5th</label><input type="number" step="0.01" id="ct_5" oninput="recalcCycleTimePreview()"></div>
-              <div style="flex:1.6; min-width:160px; padding-bottom:8px; font-size:12.5px; line-height:1.7;">
-                Avg: <b id="ctPreviewAvg">0</b>s &nbsp;|&nbsp; Tact Time: <b id="ctPreviewTact">0</b>m<br>
-                Capacity: <b id="ctPreviewCapacity" style="color:#16a34a;">0</b> pcs/hr
-              </div>
+              <div class="form-group" style="flex:1; min-width:64px;"><label style="font-size:11.5px;">1st</label><input type="number" step="0.01" id="ct_1" oninput="recalcCycleTimePreview()"></div>
+              <div class="form-group" style="flex:1; min-width:64px;"><label style="font-size:11.5px;">2nd</label><input type="number" step="0.01" id="ct_2" oninput="recalcCycleTimePreview()"></div>
+              <div class="form-group" style="flex:1; min-width:64px;"><label style="font-size:11.5px;">3rd</label><input type="number" step="0.01" id="ct_3" oninput="recalcCycleTimePreview()"></div>
+              <div class="form-group" style="flex:1; min-width:64px;"><label style="font-size:11.5px;">4th</label><input type="number" step="0.01" id="ct_4" oninput="recalcCycleTimePreview()"></div>
+              <div class="form-group" style="flex:1; min-width:64px;"><label style="font-size:11.5px;">5th</label><input type="number" step="0.01" id="ct_5" oninput="recalcCycleTimePreview()"></div>
+              <div class="form-group" style="flex:1; min-width:80px;"><label style="font-size:11.5px; color:#b45309; font-weight:600;">+ Allowance (s)</label><input type="number" step="0.01" id="ct_allowance" value="0" oninput="recalcCycleTimePreview()" style="background:#fffbeb; border-color:#fde68a;"></div>
+            </div>
+            <div style="margin-top:10px; font-size:12.5px; line-height:1.8;">
+              Avg Cycle: <b id="ctPreviewAvg">0</b>s &nbsp;|&nbsp; + Allowance: <b id="ctPreviewAllow">0</b>s &nbsp;|&nbsp; Standard Time: <b id="ctPreviewStd">0</b>s &nbsp;|&nbsp; Tact: <b id="ctPreviewTact">0</b>m<br>
+              Hourly Capacity / Target: <b id="ctPreviewCapacity" style="color:#16a34a; font-size:15px;">0</b> pcs/hr
             </div>
           </div>
 
           <div class="form-group">
-            <label>IE Efficiency % (Editable)</label>
-            <input type="number" step="0.1" id="assign_ie_eff" value="100" placeholder="Efficiency" oninput="recalculateAssignTargetLive()">
+            <label>IE Efficiency % (reference)</label>
+            <input type="number" step="0.1" id="assign_ie_eff" value="100" placeholder="Efficiency">
           </div>
           <div class="form-group">
-            <label>Hourly Target (Auto/Custom)</label>
-            <input type="number" id="assign_hourly_target" placeholder="Target Pcs" style="background: #f0fdf4; font-weight: bold; color: #16a34a; border-color: #bbf7d0;">
+            <label>Hourly Capacity / Target (auto from Cycle Time)</label>
+            <input type="number" id="assign_hourly_target" placeholder="← Do the cycle study" readonly style="background: #f0fdf4; font-weight: bold; color: #16a34a; border-color: #bbf7d0;">
           </div>
 
           <div class="form-actions">
@@ -445,7 +446,7 @@
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>SL</th><th>Line No</th><th>Photo</th><th>Office ID</th><th>Operator Name</th><th>Designation</th><th>Style Name</th><th>Operation Name</th><th>Machine Name</th><th>IE EFF %</th><th>Hourly Target</th><th>Capacity (pcs/hr)</th><th>Actions</th></tr>
+            <tr><th>SL</th><th>Line No</th><th>Photo</th><th>Office ID</th><th>Operator Name</th><th>Designation</th><th>Style Name</th><th>Operation Name</th><th>Machine Name</th><th>IE EFF %</th><th>Std. Time (s)</th><th>Capacity / Target (pcs/hr)</th><th>Actions</th></tr>
           </thead>
           <tbody id="assignTableBody"></tbody>
         </table>
@@ -1506,39 +1507,42 @@ async function populateOperationsLive() {
   } catch (err) { showToast('Could not load operations for this style', 'error'); }
 }
 
-// Triggered when Operation is selected — auto-fills Machine Name + SAM value from that row.
-// IE Efficiency % is NOT auto-filled here — it's a per-operator manual entry (see recalculateAssignTargetLive).
+// Triggered when Operation is selected — auto-fills Machine Name + SMV (reference) from that row.
+// Hourly Target is NOT set here anymore — it comes from the Cycle Time capacity (recalcCycleTimePreview).
 function loadSamParametersLive() {
   const selectedOperation = document.getElementById('assign_process').value;
   const item = currentAssignItems.find(it => it.operation_name === selectedOperation);
   if (item) {
     document.getElementById('assign_machine').value = item.machine_name || '';
     document.getElementById('hidden_sam_value').value = item.smv;
-    recalculateAssignTargetLive(); // in case an efficiency % is already typed in
+    // Hourly Target no longer comes from SAM — it's driven by the Cycle Time capacity below.
   } else {
     document.getElementById('assign_machine').value = '';
     document.getElementById('hidden_sam_value').value = '';
   }
 }
 
-function recalculateAssignTargetLive() {
-  const eff = parseFloat(document.getElementById('assign_ie_eff').value);
-  const sam = parseFloat(document.getElementById('hidden_sam_value').value);
-  document.getElementById('assign_hourly_target').value = (sam > 0 && eff > 0) ? Math.round((60 * (eff / 100)) / sam) : '';
-}
-
-// Live preview only (Avg / Tact Time / Capacity) — the real Number of Avg (which depends on
-// how many OTHER operators share this exact operation) is calculated server-side on save/load.
+// Cycle Time → Standard Time → Capacity → Hourly Target (standard BD garments method):
+//   Standard Time (s) = average of the filled-in cycle readings + fixed Allowance (s)
+//   Capacity (pcs/hr) = 3600 / Standard Time   → this IS the Hourly Target now
+// The real "Number of Avg" (which depends on how many OTHER operators share this exact
+// operation) is still calculated server-side on save/load for the Line Balancing Summary.
 function recalcCycleTimePreview() {
   const readings = ['ct_1','ct_2','ct_3','ct_4','ct_5']
     .map(id => parseFloat(document.getElementById(id).value))
     .filter(v => !isNaN(v) && v > 0);
   const avg = readings.length > 0 ? readings.reduce((a,b) => a+b, 0) / readings.length : 0;
-  const tactTime = avg / 60;
-  const capacity = avg > 0 ? 3600 / avg : 0;
+  const allowance = parseFloat(document.getElementById('ct_allowance').value) || 0;
+  const stdTime = avg > 0 ? avg + allowance : 0;
+  const tactTime = stdTime / 60;
+  const capacity = stdTime > 0 ? 3600 / stdTime : 0;
   document.getElementById('ctPreviewAvg').textContent = avg.toFixed(2);
+  document.getElementById('ctPreviewAllow').textContent = allowance.toFixed(2);
+  document.getElementById('ctPreviewStd').textContent = stdTime.toFixed(2);
   document.getElementById('ctPreviewTact').textContent = tactTime.toFixed(3);
   document.getElementById('ctPreviewCapacity').textContent = Math.round(capacity);
+  // Hourly Target is auto-filled from Capacity (the field is read-only)
+  document.getElementById('assign_hourly_target').value = capacity > 0 ? Math.round(capacity) : '';
 }
 
 async function loadAssignments() {
@@ -1560,8 +1564,8 @@ function renderAssignTable(data) {
       <td>${index + 1}</td><td><span class="badge badge-line">${row.line_name}</span></td>
       <td><img class="avatar" src="${opPhotoUrl(row.office_id)}" onerror="this.src='${BASE_URL}/uploads/default.jpg'"></td>
       <td><strong>${row.office_id}</strong></td><td>${row.operator_name}</td><td>${row.designation || '-'}</td><td>${row.style_name}</td><td>${row.operation_name}</td><td>${row.machine_name || '-'}</td><td>${row.ie_eff_pct}%</td>
-      <td><span class="badge badge-target">${row.hourly_target} Pcs</span></td>
-      <td>${row.capacity ? `<span style="font-weight:700; color:${row.capacity >= row.hourly_target ? '#16a34a' : '#dc2626'};">${row.capacity}</span>` : '<span style="color:#9ca3af;">Not measured</span>'}</td>
+      <td>${row.std_time ? `${row.std_time}s` : '<span style="color:#9ca3af;">-</span>'}</td>
+      <td>${row.capacity ? `<span class="badge badge-target" style="font-weight:700;">${row.capacity} Pcs</span>` : '<span style="color:#9ca3af;">Not measured</span>'}</td>
       <td><div class="action-btns"><button class="btn-sm btn-edit" onclick="editAssignment(${row.id})">Update</button><button class="btn-sm btn-delete" onclick="deleteAssignment(${row.id})">Remove</button></div></td>
     </tr>
   `).join('');
@@ -1580,11 +1584,12 @@ document.getElementById('assignForm').addEventListener('submit', async (e) => {
   const eff = document.getElementById('assign_ie_eff').value;
   const target = document.getElementById('assign_hourly_target').value;
   const sam = document.getElementById('hidden_sam_value').value;
+  const allowance = document.getElementById('ct_allowance').value;
   const assignId = document.getElementById('assignId').value;
   const ct1 = document.getElementById('ct_1').value, ct2 = document.getElementById('ct_2').value, ct3 = document.getElementById('ct_3').value, ct4 = document.getElementById('ct_4').value, ct5 = document.getElementById('ct_5').value;
 
-  if(!line || !officeId || !opName || !style || !operation || !eff || !target) { showToast('Fill assignment fields!', 'error'); return; }
-  const payload = { line_name: line, office_id: officeId, operator_name: opName, designation, style_name: styleText, operation_name: operation, machine_name: machine, ie_eff_pct: eff, hourly_target: target, sam_value: sam,
+  if(!line || !officeId || !opName || !style || !operation) { showToast('Fill Line, Operator, Style & Operation!', 'error'); return; }
+  const payload = { line_name: line, office_id: officeId, operator_name: opName, designation, style_name: styleText, operation_name: operation, machine_name: machine, ie_eff_pct: eff || 100, hourly_target: target || 0, sam_value: sam, allowance_time: allowance || 0,
     cycle_time_1: ct1 || null, cycle_time_2: ct2 || null, cycle_time_3: ct3 || null, cycle_time_4: ct4 || null, cycle_time_5: ct5 || null };
   try {
     const url = isAssignEditMode ? `${BASE_URL}/api/assignments/${assignId}` : `${BASE_URL}/api/assignments`;
@@ -1610,12 +1615,12 @@ async function editAssignment(id) {
   document.getElementById('assign_process').value = row.operation_name;
   document.getElementById('assign_machine').value = row.machine_name || '';
   document.getElementById('assign_ie_eff').value = row.ie_eff_pct;
-  document.getElementById('assign_hourly_target').value = row.hourly_target;
   document.getElementById('hidden_sam_value').value = row.sam_value;
   document.getElementById('ct_1').value = row.cycle_time_1 || ''; document.getElementById('ct_2').value = row.cycle_time_2 || '';
   document.getElementById('ct_3').value = row.cycle_time_3 || ''; document.getElementById('ct_4').value = row.cycle_time_4 || '';
   document.getElementById('ct_5').value = row.cycle_time_5 || '';
-  recalcCycleTimePreview();
+  document.getElementById('ct_allowance').value = (row.allowance_time != null ? row.allowance_time : 0);
+  recalcCycleTimePreview(); // re-fills Hourly Target = Capacity from the loaded readings + allowance
   document.getElementById('assignFormTitle').textContent = 'Update Assigned Operator Parameters';
   document.getElementById('assignSubmitBtn').textContent = 'Update Allocation'; document.getElementById('assignCancelBtn').style.display = 'inline-block';
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1631,7 +1636,7 @@ function resetAssignForm() {
   document.getElementById('hidden_sam_value').value = '';
   document.getElementById('assign_ie_eff').value = 100; document.getElementById('assign_hourly_target').value = '';
   document.getElementById('ct_1').value = ''; document.getElementById('ct_2').value = ''; document.getElementById('ct_3').value = '';
-  document.getElementById('ct_4').value = ''; document.getElementById('ct_5').value = '';
+  document.getElementById('ct_4').value = ''; document.getElementById('ct_5').value = ''; document.getElementById('ct_allowance').value = 0;
   document.getElementById('assignFormTitle').textContent = 'Assign Operator to Production Line';
   document.getElementById('assignSubmitBtn').textContent = 'Add Operator to Line'; document.getElementById('assignCancelBtn').style.display = 'none';
   recalcCycleTimePreview();
@@ -1676,7 +1681,7 @@ function printAssignMatrix() {
       <td>${row.operation_name}</td>
       <td>${row.machine_name || ''}</td>
       <td style="text-align:center;">${row.ie_eff_pct}%</td>
-      <td style="text-align:center;">${row.hourly_target}</td>
+      <td style="text-align:center;">${row.std_time || '-'}</td>
       <td style="text-align:center;">${row.capacity || '-'}</td>
     </tr>
   `).join('');
@@ -1694,7 +1699,7 @@ function printAssignMatrix() {
       <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
       <h3>LINE OPERATOR ASSIGNMENT — ${lineLabel}</h3>
       <table>
-        <thead><tr><th>SL</th><th>Line</th><th>Office ID</th><th>Name</th><th>Designation</th><th>Style</th><th>Operation</th><th>Machine</th><th>IE EFF %</th><th>Hourly Target</th><th>Capacity</th></tr></thead>
+        <thead><tr><th>SL</th><th>Line</th><th>Office ID</th><th>Name</th><th>Designation</th><th>Style</th><th>Operation</th><th>Machine</th><th>IE EFF %</th><th>Std Time (s)</th><th>Capacity / Target</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </body></html>
@@ -1713,8 +1718,8 @@ function downloadAssignMatrixExcel() {
     ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
     ['BHALUKA, MYMENSINGH'],
     [`LINE OPERATOR ASSIGNMENT — ${lineLabel}`],
-    ['SL', 'Line', 'Office ID', 'Name', 'Designation', 'Style', 'Operation', 'Machine', 'IE EFF %', 'Hourly Target', 'Capacity (pcs/hr)'],
-    ...data.map((row, i) => [i + 1, row.line_name, row.office_id, row.operator_name, row.designation || '', row.style_name, row.operation_name, row.machine_name || '', row.ie_eff_pct, row.hourly_target, row.capacity || ''])
+    ['SL', 'Line', 'Office ID', 'Name', 'Designation', 'Style', 'Operation', 'Machine', 'IE EFF %', 'Std Time (s)', 'Capacity / Target (pcs/hr)'],
+    ...data.map((row, i) => [i + 1, row.line_name, row.office_id, row.operator_name, row.designation || '', row.style_name, row.operation_name, row.machine_name || '', row.ie_eff_pct, row.std_time || '', row.capacity || ''])
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [{wch:6},{wch:10},{wch:10},{wch:20},{wch:16},{wch:18},{wch:28},{wch:14},{wch:10},{wch:12},{wch:14}];

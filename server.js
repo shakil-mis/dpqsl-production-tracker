@@ -447,9 +447,12 @@ app.delete('/api/operation-breakdowns/:id', verifyToken, authorizeRoles('ADMIN',
 // Operation — so two people sharing one operation each carry half the tact-time weight).
 // ==========================================
 // Reusable SQL fragment: capacity (pcs/hr) computed from a joined "oa" (operator_assignments)
-// row's 5 stopwatch readings — 3600 / average of whichever readings were actually filled in.
+// row's 5 stopwatch readings + a fixed allowance (seconds):
+//   Standard Time = average of whichever cycle readings were filled in + allowance_time
+//   Capacity      = 3600 / Standard Time
 // Used everywhere efficiency is calculated, so Capacity (not the old SAM/Target) drives it.
-const CAPACITY_SQL = `(3600 / NULLIF((SELECT AVG(v) FROM unnest(ARRAY[oa.cycle_time_1, oa.cycle_time_2, oa.cycle_time_3, oa.cycle_time_4, oa.cycle_time_5]) AS v WHERE v > 0), 0))`;
+// NOTE: this references oa.allowance_time — run the allowance_time migration BEFORE deploying.
+const CAPACITY_SQL = `(3600 / NULLIF((SELECT AVG(v) FROM unnest(ARRAY[oa.cycle_time_1, oa.cycle_time_2, oa.cycle_time_3, oa.cycle_time_4, oa.cycle_time_5]) AS v WHERE v > 0) + COALESCE(oa.allowance_time, 0), 0))`;
 // Capacity is constant per operator+line+style group, but inside a GROUP BY query Postgres still
 // needs every non-aggregated expression wrapped in an aggregate — MAX() here doesn't change the
 // value (it's the same for every row in the group), it just satisfies that requirement.
@@ -468,29 +471,45 @@ function attachCycleTimeCalcs(rows) {
             .map(v => parseFloat(v)).filter(v => !isNaN(v) && v > 0);
 
         const avg = readings.length > 0 ? readings.reduce((a, b) => a + b, 0) / readings.length : 0;
-        const tactTime = avg / 60;
-        const capacity = avg > 0 ? 3600 / avg : 0;
+        const allowance = parseFloat(r.allowance_time) || 0;
+        const stdTime = avg > 0 ? avg + allowance : 0;        // Standard Time per piece (sec) = avg cycle + allowance
+        const tactTime = stdTime / 60;                         // per-piece standard minute (allowance included)
+        const capacity = stdTime > 0 ? 3600 / stdTime : 0;     // hourly capacity = hourly target (100%)
 
         const key = `${r.line_name}|${r.style_name}|${r.operation_name}`;
         const sharedCount = operationCounts[key] || 1;
-        const numberOfAvg = avg / sharedCount;
+        const numberOfAvg = stdTime / sharedCount;
         const avgTactTime = numberOfAvg / 60;
 
-        return { ...r, cycle_avg: round2(avg), tact_time: round2(tactTime), capacity: round2(capacity), number_of_avg: round2(numberOfAvg), avg_tact_time: round4(avgTactTime) };
+        return { ...r, cycle_avg: round2(avg), allowance_time: round2(allowance), std_time: round2(stdTime), tact_time: round2(tactTime), capacity: round2(capacity), number_of_avg: round2(numberOfAvg), avg_tact_time: round4(avgTactTime) };
     });
 }
 function round2(n) { return Math.round((n || 0) * 100) / 100; }
 function round4(n) { return Math.round((n || 0) * 10000) / 10000; }
 
+// Hourly capacity/target from a set of stopwatch readings + fixed allowance (seconds):
+//   Capacity (pcs/hr) = 3600 / (average of the filled-in cycle readings + allowance)
+// Returns a whole number (0 if no readings yet). Stored as the assignment's hourly_target,
+// so Target always equals Capacity — no separate SAM-based target anymore.
+function computeCapacityFromCycles(c1, c2, c3, c4, c5, allowance) {
+    const readings = [c1, c2, c3, c4, c5].map(v => parseFloat(v)).filter(v => !isNaN(v) && v > 0);
+    if (readings.length === 0) return 0;
+    const avg = readings.reduce((a, b) => a + b, 0) / readings.length;
+    const std = avg + (parseFloat(allowance) || 0);
+    return std > 0 ? Math.round(3600 / std) : 0;
+}
+
 app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
-    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5 } = req.body;
+    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, sam_value, allowance_time, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5 } = req.body;
     try {
         const checkDuplicate = await pool.query('SELECT * FROM operator_assignments WHERE office_id = $1 AND line_name = $2', [office_id, line_name]);
         if (checkDuplicate.rows.length > 0) return res.status(400).json({ success: false, message: 'Operator already assigned!' });
+        // Hourly Target is driven by the cycle-time capacity — computed here so it always matches Capacity.
+        const hourly_target = computeCapacityFromCycles(cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5, allowance_time);
         const result = await pool.query(
-            `INSERT INTO operator_assignments (line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
-            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1 || null, cycle_time_2 || null, cycle_time_3 || null, cycle_time_4 || null, cycle_time_5 || null]
+            `INSERT INTO operator_assignments (line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, allowance_time, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, allowance_time || 0, cycle_time_1 || null, cycle_time_2 || null, cycle_time_3 || null, cycle_time_4 || null, cycle_time_5 || null]
         );
         res.json({ success: true, message: 'Operator assigned successfully!', data: result.rows[0] });
     } catch (err) {
@@ -516,13 +535,15 @@ app.get('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING', 
 
 app.put('/api/assignments/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     const { id } = req.params;
-    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5 } = req.body;
+    const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, sam_value, allowance_time, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5 } = req.body;
     try {
+        // Recompute Hourly Target from the (possibly edited) cycle readings + allowance, so it stays = Capacity.
+        const hourly_target = computeCapacityFromCycles(cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5, allowance_time);
         await pool.query(
-            `UPDATE operator_assignments SET line_name=$1, office_id=$2, operator_name=$3, designation=$4, style_name=$5, operation_name=$6, machine_name=$7, ie_eff_pct=$8, hourly_target=$9, sam_value=$10,
-             cycle_time_1=$11, cycle_time_2=$12, cycle_time_3=$13, cycle_time_4=$14, cycle_time_5=$15
-             WHERE id=$16`,
-            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, cycle_time_1 || null, cycle_time_2 || null, cycle_time_3 || null, cycle_time_4 || null, cycle_time_5 || null, id]
+            `UPDATE operator_assignments SET line_name=$1, office_id=$2, operator_name=$3, designation=$4, style_name=$5, operation_name=$6, machine_name=$7, ie_eff_pct=$8, hourly_target=$9, sam_value=$10, allowance_time=$11,
+             cycle_time_1=$12, cycle_time_2=$13, cycle_time_3=$14, cycle_time_4=$15, cycle_time_5=$16
+             WHERE id=$17`,
+            [line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, allowance_time || 0, cycle_time_1 || null, cycle_time_2 || null, cycle_time_3 || null, cycle_time_4 || null, cycle_time_5 || null, id]
         );
         res.json({ success: true, message: 'Assignment updated successfully!' });
     } catch (err) {
