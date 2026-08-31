@@ -449,10 +449,11 @@ app.delete('/api/operation-breakdowns/:id', verifyToken, authorizeRoles('ADMIN',
 // Reusable SQL fragment: capacity (pcs/hr) computed from a joined "oa" (operator_assignments)
 // row's 5 stopwatch readings + a fixed allowance (seconds):
 //   Standard Time = average of whichever cycle readings were filled in + allowance_time
-//   Capacity      = 3600 / Standard Time
+//   Theoretical Capacity = 3600 / Standard Time
+//   Capacity (Target)    = Theoretical Capacity × (Plan Efficiency % / 100)
 // Used everywhere efficiency is calculated, so Capacity (not the old SAM/Target) drives it.
 // NOTE: this references oa.allowance_time — run the allowance_time migration BEFORE deploying.
-const CAPACITY_SQL = `(3600 / NULLIF((SELECT AVG(v) FROM unnest(ARRAY[oa.cycle_time_1, oa.cycle_time_2, oa.cycle_time_3, oa.cycle_time_4, oa.cycle_time_5]) AS v WHERE v > 0) + COALESCE(oa.allowance_time, 0), 0))`;
+const CAPACITY_SQL = `((3600 / NULLIF((SELECT AVG(v) FROM unnest(ARRAY[oa.cycle_time_1, oa.cycle_time_2, oa.cycle_time_3, oa.cycle_time_4, oa.cycle_time_5]) AS v WHERE v > 0) + COALESCE(oa.allowance_time, 0), 0)) * (COALESCE(oa.ie_eff_pct, 100) / 100.0))`;
 // Capacity is constant per operator+line+style group, but inside a GROUP BY query Postgres still
 // needs every non-aggregated expression wrapped in an aggregate — MAX() here doesn't change the
 // value (it's the same for every row in the group), it just satisfies that requirement.
@@ -474,7 +475,9 @@ function attachCycleTimeCalcs(rows) {
         const allowance = parseFloat(r.allowance_time) || 0;
         const stdTime = avg > 0 ? avg + allowance : 0;        // Standard Time per piece (sec) = avg cycle + allowance
         const tactTime = stdTime / 60;                         // per-piece standard minute (allowance included)
-        const capacity = stdTime > 0 ? 3600 / stdTime : 0;     // hourly capacity = hourly target (100%)
+        const planEffPct = parseFloat(r.ie_eff_pct);
+        const theoreticalCapacity = stdTime > 0 ? 3600 / stdTime : 0;
+        const capacity = theoreticalCapacity * ((isNaN(planEffPct) ? 100 : planEffPct) / 100); // hourly capacity/target = theoretical capacity × Plan Efficiency %
 
         const key = `${r.line_name}|${r.style_name}|${r.operation_name}`;
         const sharedCount = operationCounts[key] || 1;
@@ -487,16 +490,20 @@ function attachCycleTimeCalcs(rows) {
 function round2(n) { return Math.round((n || 0) * 100) / 100; }
 function round4(n) { return Math.round((n || 0) * 10000) / 10000; }
 
-// Hourly capacity/target from a set of stopwatch readings + fixed allowance (seconds):
-//   Capacity (pcs/hr) = 3600 / (average of the filled-in cycle readings + allowance)
+// Hourly capacity/target from a set of stopwatch readings + fixed allowance (seconds), scaled
+// by Plan Efficiency %:
+//   Theoretical Capacity (pcs/hr) = 3600 / (average of the filled-in cycle readings + allowance)
+//   Capacity / Target (pcs/hr)    = Theoretical Capacity × (Plan Efficiency % / 100)
 // Returns a whole number (0 if no readings yet). Stored as the assignment's hourly_target,
 // so Target always equals Capacity — no separate SAM-based target anymore.
-function computeCapacityFromCycles(c1, c2, c3, c4, c5, allowance) {
+function computeCapacityFromCycles(c1, c2, c3, c4, c5, allowance, ieEffPct) {
     const readings = [c1, c2, c3, c4, c5].map(v => parseFloat(v)).filter(v => !isNaN(v) && v > 0);
     if (readings.length === 0) return 0;
     const avg = readings.reduce((a, b) => a + b, 0) / readings.length;
     const std = avg + (parseFloat(allowance) || 0);
-    return std > 0 ? Math.round(3600 / std) : 0;
+    const theoreticalCapacity = std > 0 ? 3600 / std : 0;
+    const effPct = parseFloat(ieEffPct);
+    return Math.round(theoreticalCapacity * ((isNaN(effPct) ? 100 : effPct) / 100));
 }
 
 app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
@@ -504,8 +511,8 @@ app.post('/api/assignments', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING')
     try {
         const checkDuplicate = await pool.query('SELECT * FROM operator_assignments WHERE office_id = $1 AND line_name = $2', [office_id, line_name]);
         if (checkDuplicate.rows.length > 0) return res.status(400).json({ success: false, message: 'Operator already assigned!' });
-        // Hourly Target is driven by the cycle-time capacity — computed here so it always matches Capacity.
-        const hourly_target = computeCapacityFromCycles(cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5, allowance_time);
+        // Hourly Target is driven by the cycle-time capacity × Plan Efficiency % — computed here so it always matches Capacity.
+        const hourly_target = computeCapacityFromCycles(cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5, allowance_time, ie_eff_pct);
         const result = await pool.query(
             `INSERT INTO operator_assignments (line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, hourly_target, sam_value, allowance_time, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
@@ -537,8 +544,8 @@ app.put('/api/assignments/:id', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNIN
     const { id } = req.params;
     const { line_name, office_id, operator_name, designation, style_name, operation_name, machine_name, ie_eff_pct, sam_value, allowance_time, cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5 } = req.body;
     try {
-        // Recompute Hourly Target from the (possibly edited) cycle readings + allowance, so it stays = Capacity.
-        const hourly_target = computeCapacityFromCycles(cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5, allowance_time);
+        // Recompute Hourly Target from the (possibly edited) cycle readings + allowance + Plan Efficiency %, so it stays = Capacity.
+        const hourly_target = computeCapacityFromCycles(cycle_time_1, cycle_time_2, cycle_time_3, cycle_time_4, cycle_time_5, allowance_time, ie_eff_pct);
         await pool.query(
             `UPDATE operator_assignments SET line_name=$1, office_id=$2, operator_name=$3, designation=$4, style_name=$5, operation_name=$6, machine_name=$7, ie_eff_pct=$8, hourly_target=$9, sam_value=$10, allowance_time=$11,
              cycle_time_1=$12, cycle_time_2=$13, cycle_time_3=$14, cycle_time_4=$15, cycle_time_5=$16
@@ -574,7 +581,7 @@ app.get('/api/line-study', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), 
 
         const headerResult = await pool.query('SELECT * FROM line_study_headers WHERE line_name = $1 AND style_name = $2', [line, style]);
         const header = headerResult.rows[0] || {
-            line_name: line, style_name: style, order_qty: null, allocated_qty: null, plan_effi: null,
+            line_name: line, style_name: style, order_qty: null, allocated_qty: null,
             input_date: null, output_date: null, graph_type: null, tgt_hour: null, per_hour_tgt: null,
             current_pcs: null, acvd_effi: null, dhu: null, observer_officer: null
         };
@@ -609,7 +616,7 @@ app.get('/api/line-study', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), 
                 line_name: line, style_name: style,
                 buyer_name: buyerName, smv: round2(totalSmv),
                 no_of_worker: noOfWorker,
-                order_qty: header.order_qty, allocated_qty: header.allocated_qty, plan_effi: header.plan_effi,
+                order_qty: header.order_qty, allocated_qty: header.allocated_qty,
                 input_date: header.input_date, output_date: header.output_date, graph_type: header.graph_type,
                 tgt_hour: header.tgt_hour, per_hour_tgt: header.per_hour_tgt, current_pcs: header.current_pcs,
                 acvd_effi: header.acvd_effi, dhu: header.dhu, observer_officer: header.observer_officer,
@@ -629,15 +636,15 @@ app.get('/api/line-study', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), 
 app.put('/api/line-study', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), async (req, res) => {
     const { line, style } = req.query;
     if (!line || !style) return res.status(400).json({ success: false, message: 'line and style query params are required.' });
-    const { order_qty, allocated_qty, plan_effi, input_date, output_date, graph_type, tgt_hour, per_hour_tgt, current_pcs, acvd_effi, dhu, observer_officer } = req.body;
+    const { order_qty, allocated_qty, input_date, output_date, graph_type, tgt_hour, per_hour_tgt, current_pcs, acvd_effi, dhu, observer_officer } = req.body;
     try {
         await pool.query(
-            `INSERT INTO line_study_headers (line_name, style_name, order_qty, allocated_qty, plan_effi, input_date, output_date, graph_type, tgt_hour, per_hour_tgt, current_pcs, acvd_effi, dhu, observer_officer, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+            `INSERT INTO line_study_headers (line_name, style_name, order_qty, allocated_qty, input_date, output_date, graph_type, tgt_hour, per_hour_tgt, current_pcs, acvd_effi, dhu, observer_officer, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
              ON CONFLICT (line_name, style_name) DO UPDATE SET
-                order_qty=$3, allocated_qty=$4, plan_effi=$5, input_date=$6, output_date=$7, graph_type=$8,
-                tgt_hour=$9, per_hour_tgt=$10, current_pcs=$11, acvd_effi=$12, dhu=$13, observer_officer=$14, updated_at=NOW()`,
-            [line, style, order_qty || null, allocated_qty || null, plan_effi || null, input_date || null, output_date || null,
+                order_qty=$3, allocated_qty=$4, input_date=$5, output_date=$6, graph_type=$7,
+                tgt_hour=$8, per_hour_tgt=$9, current_pcs=$10, acvd_effi=$11, dhu=$12, observer_officer=$13, updated_at=NOW()`,
+            [line, style, order_qty || null, allocated_qty || null, input_date || null, output_date || null,
              graph_type || null, tgt_hour || null, per_hour_tgt || null, current_pcs || null, acvd_effi || null, dhu || null, observer_officer || null]
         );
         res.json({ success: true, message: 'Line study header saved successfully!' });

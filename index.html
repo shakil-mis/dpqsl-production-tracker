@@ -404,18 +404,33 @@
             </div>
             <div style="margin-top:10px; font-size:12.5px; line-height:1.8;">
               Avg Cycle: <b id="ctPreviewAvg">0</b>s &nbsp;|&nbsp; + Allowance: <b id="ctPreviewAllow">0</b>s &nbsp;|&nbsp; Standard Time: <b id="ctPreviewStd">0</b>s &nbsp;|&nbsp; Tact: <b id="ctPreviewTact">0</b>m<br>
-              Hourly Capacity / Target: <b id="ctPreviewCapacity" style="color:#16a34a; font-size:15px;">0</b> pcs/hr
+              Theoretical Capacity: <b id="ctPreviewTheoretical">0</b> pcs/hr &nbsp;|&nbsp; Hourly Capacity / Target (× Plan Eff%): <b id="ctPreviewCapacity" style="color:#16a34a; font-size:15px;">0</b> pcs/hr
             </div>
           </div>
 
           <div class="form-group">
-            <label>IE Efficiency % (reference)</label>
-            <input type="number" step="0.1" id="assign_ie_eff" value="100" placeholder="Efficiency">
+            <label>Plan Efficiency %</label>
+            <input type="number" step="0.1" id="assign_ie_eff" value="100" placeholder="Efficiency" oninput="recalcCycleTimePreview()">
           </div>
           <div class="form-group">
-            <label>Hourly Capacity / Target (auto from Cycle Time)</label>
+            <label>Hourly Capacity / Target (Theoretical × Plan Eff%)</label>
             <input type="number" id="assign_hourly_target" placeholder="← Do the cycle study" readonly style="background: #f0fdf4; font-weight: bold; color: #16a34a; border-color: #bbf7d0;">
           </div>
+
+          <div style="grid-column: span 2; margin-top:6px;">
+            <label style="display:block; margin-bottom:8px; font-weight:600; font-size:13px; color:var(--text-muted);">📋 Line Balancing — Planning Details <span id="lsCurrentSelection" style="font-weight:400;"></span> <span style="font-weight:400; color:#9ca3af;">(one set per Line + Style — optional, leave blank if not needed)</span></label>
+          </div>
+          <div class="form-group"><label>Order Qty</label><input type="number" id="ls_orderQty"></div>
+          <div class="form-group"><label>Allocated Qty</label><input type="number" id="ls_allocatedQty"></div>
+          <div class="form-group"><label>Input Date</label><input type="date" id="ls_inputDate"></div>
+          <div class="form-group"><label>Output Date</label><input type="date" id="ls_outputDate"></div>
+          <div class="form-group"><label>Graph Type</label><input type="text" id="ls_graphType"></div>
+          <div class="form-group"><label>TGT Hour</label><input type="number" step="0.1" id="ls_tgtHour"></div>
+          <div class="form-group"><label>Per Hour Tgt</label><input type="number" id="ls_perHourTgt"></div>
+          <div class="form-group"><label>Current Pcs</label><input type="number" id="ls_currentPcs"></div>
+          <div class="form-group"><label>Acvd Effi %</label><input type="number" step="0.1" id="ls_acvdEffi"></div>
+          <div class="form-group"><label>DHU</label><input type="number" step="0.01" id="ls_dhu"></div>
+          <div class="form-group"><label>Observer Officer</label><input type="text" id="ls_observer"></div>
 
           <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="assignSubmitBtn">Add Operator to Line</button>
@@ -446,7 +461,7 @@
       <div style="overflow-x:auto;">
         <table>
           <thead>
-            <tr><th>SL</th><th>Line No</th><th>Photo</th><th>Office ID</th><th>Operator Name</th><th>Designation</th><th>Style Name</th><th>Operation Name</th><th>Machine Name</th><th>IE EFF %</th><th>Std. Time (s)</th><th>Capacity / Target (pcs/hr)</th><th>Actions</th></tr>
+            <tr><th>SL</th><th>Line No</th><th>Photo</th><th>Office ID</th><th>Operator Name</th><th>Designation</th><th>Style Name</th><th>Operation Name</th><th>Machine Name</th><th>Plan Eff %</th><th>Avg. Tact Time</th><th>Capacity / Target (pcs/hr)</th><th>Actions</th></tr>
           </thead>
           <tbody id="assignTableBody"></tbody>
         </table>
@@ -456,12 +471,12 @@
 
     <div class="card">
       <h2 style="margin-bottom:6px;">📐 Line Balancing Summary</h2>
-      <p style="font-size:12.5px; color:var(--text-muted); margin-bottom:14px;">Automatically follows the Line + Style selected above — pick them once, then just keep adding operators. <span id="lsCurrentSelection" style="font-weight:600;"></span></p>
+      <p style="font-size:12.5px; color:var(--text-muted); margin-bottom:14px;">Auto-calculated from the operators assigned to the Line + Style selected above — no separate entry needed, this just updates as you add operators.</p>
 
-      <div id="lineStudyEmpty" style="text-align:center; color:var(--text-muted); padding:20px; font-size:13.5px;">Select a Line and Style in the form above to view/enter the balancing summary.</div>
+      <div id="lineStudyEmpty" style="text-align:center; color:var(--text-muted); padding:20px; font-size:13.5px;">Select a Line and Style in the form above to view the balancing summary.</div>
 
       <div id="lineStudyContent" style="display:none;">
-        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:18px;">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px;">
           <div class="ls-stat"><label>Buyer</label><div id="ls_buyer">-</div></div>
           <div class="ls-stat"><label>SMV</label><div id="ls_smv">-</div></div>
           <div class="ls-stat"><label>No. of Worker</label><div id="ls_noOfWorker">-</div></div>
@@ -474,25 +489,6 @@
           <div class="ls-stat"><label>Per Process Need</label><div id="ls_perProcessNeed">-</div></div>
           <div class="ls-stat highlight"><label>Worker Perf %</label><div id="ls_workerPerf">-</div></div>
           <div class="ls-stat highlight"><label>Productivity Gap</label><div id="ls_prodGap">-</div></div>
-        </div>
-
-        <h3 style="font-size:14px; margin-bottom:10px; color:var(--text-muted);">Manual Entry Fields</h3>
-        <div class="form-grid">
-          <div class="form-group"><label>Order Qty</label><input type="number" id="ls_orderQty"></div>
-          <div class="form-group"><label>Allocated Qty</label><input type="number" id="ls_allocatedQty"></div>
-          <div class="form-group"><label>Plan Effi %</label><input type="number" step="0.1" id="ls_planEffi"></div>
-          <div class="form-group"><label>Input Date</label><input type="date" id="ls_inputDate"></div>
-          <div class="form-group"><label>Output Date</label><input type="date" id="ls_outputDate"></div>
-          <div class="form-group"><label>Graph Type</label><input type="text" id="ls_graphType"></div>
-          <div class="form-group"><label>TGT Hour</label><input type="number" step="0.1" id="ls_tgtHour"></div>
-          <div class="form-group"><label>Per Hour Tgt</label><input type="number" id="ls_perHourTgt"></div>
-          <div class="form-group"><label>Current Pcs</label><input type="number" id="ls_currentPcs"></div>
-          <div class="form-group"><label>Acvd Effi %</label><input type="number" step="0.1" id="ls_acvdEffi"></div>
-          <div class="form-group"><label>DHU</label><input type="number" step="0.01" id="ls_dhu"></div>
-          <div class="form-group"><label>Observer Officer</label><input type="text" id="ls_observer"></div>
-          <div class="form-actions">
-            <button type="button" class="btn btn-primary" onclick="saveLineStudy()">Save Summary</button>
-          </div>
         </div>
       </div>
     </div>
@@ -1257,7 +1253,7 @@ function renderStagingTable() {
     empty.style.display = 'none';
     tbody.innerHTML = obStagingRows.map((row, idx) => `
       <tr>
-        <td>${idx + 1}</td><td>${row.machine_name || '-'}</td><td>${row.gauge_guide || '-'}</td><td>${row.operation_name}</td><td>${row.frequency ?? '-'}</td><td>${row.smv.toFixed(3)}</td>
+        <td>${idx + 1}</td><td>${row.machine_name || '-'}</td><td>${row.gauge_guide || '-'}</td><td>${row.operation_name}</td><td>${row.frequency ?? '-'}</td><td>${row.smv.toFixed(2)}</td>
         <td><div class="action-btns"><button type="button" class="btn-sm btn-edit" onclick="editStagingRow(${idx})">Update</button><button type="button" class="btn-sm btn-delete" onclick="removeStagingRow(${idx})">Remove</button></div></td>
       </tr>
     `).join('');
@@ -1303,7 +1299,7 @@ function renderSamTable(data) {
   tbody.innerHTML = data.map((row, idx) => `
     <tr>
       <td>${idx+1}</td><td>${row.buyer_name || '-'}</td><td><strong>${row.style_name}</strong></td><td>${row.item || '-'}</td><td>${row.size || '-'}</td>
-      <td>${row.operation_count}</td><td>${parseFloat(row.total_smv).toFixed(3)}</td>
+      <td>${row.operation_count}</td><td>${parseFloat(row.total_smv).toFixed(2)}</td>
       <td><div class="action-btns">
         <button class="btn-sm btn-edit" onclick="editSam(${row.id})">Edit</button>
         <button class="btn-sm btn-edit" onclick="printBreakdownSheet(${row.id})">🖨️ Print</button>
@@ -1367,14 +1363,14 @@ function buildBreakdownPrintHtml(sheet) {
       <td>${it.gauge_guide || ''}</td>
       <td>${it.operation_name}</td>
       <td style="text-align:center;">${it.frequency ?? ''}</td>
-      <td style="text-align:center;">${parseFloat(it.smv).toFixed(3)}</td>
+      <td style="text-align:center;">${parseFloat(it.smv).toFixed(2)}</td>
     </tr>
   `).join('');
   const total = sheet.items.reduce((s, it) => s + parseFloat(it.smv), 0);
   // Total row lives inside <tbody> (not <tfoot>) — a <tfoot> repeats on every printed
   // page for a multi-page table; putting it as the last <tbody> row makes it appear
   // exactly once, right after the last operation row.
-  const totalRow = `<tr><td colspan="5" style="text-align:right; font-weight:bold; background:#f8fafc;">TOTAL SEWING SMV</td><td style="text-align:center; font-weight:bold; background:#f8fafc;">${total.toFixed(3)}</td></tr>`;
+  const totalRow = `<tr><td colspan="5" style="text-align:right; font-weight:bold; background:#f8fafc;">TOTAL SEWING SMV</td><td style="text-align:center; font-weight:bold; background:#f8fafc;">${total.toFixed(2)}</td></tr>`;
   return `
     <html><head><title>Operation Breakdown - ${sheet.style_name}</title>
     <style>
@@ -1400,7 +1396,7 @@ function buildBreakdownPrintHtml(sheet) {
           <div><b>Item:</b> ${sheet.item || '-'}</div>
           <div><b>Size:</b> ${sheet.size || '-'}</div>
         </div>
-        <div><b>Total SMV: ${total.toFixed(3)}</b></div>
+        <div><b>Total SMV: ${total.toFixed(2)}</b></div>
       </div>
       <table>
         <thead><tr><th>SL NO</th><th>MACHINE NAME</th><th>TYPE OF GAGE GUIDE</th><th>OPERATION</th><th>FREQUENCY</th><th>SMV</th></tr></thead>
@@ -1433,13 +1429,13 @@ async function downloadBreakdownExcel(id) {
       ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
       ['BHALUKA, MYMENSINGH'],
       ['OPERATION BREAKDOWN SHEET'],
-      ['BUYER NAME', sheet.buyer_name || '', '', '', 'TOTAL SMV', total.toFixed(3)],
+      ['BUYER NAME', sheet.buyer_name || '', '', '', 'TOTAL SMV', total.toFixed(2)],
       ['STYLE NAME', sheet.style_name],
       ['ITEM', sheet.item || ''],
       ['SIZE', sheet.size || ''],
       ['SL NO', 'MACHINE NAME', 'TYPE OF GAGE GUIDE', 'OPERATION', 'FREQUENCY', 'SMV'],
       ...sheet.items.map(it => [it.sl_no, it.machine_name || '', it.gauge_guide || '', it.operation_name, it.frequency ?? '', parseFloat(it.smv)]),
-      ['', '', '', '', 'TOTAL SEWING SMV', total.toFixed(3)]
+      ['', '', '', '', 'TOTAL SEWING SMV', total.toFixed(2)]
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{wch:8},{wch:20},{wch:20},{wch:35},{wch:12},{wch:10}];
@@ -1535,13 +1531,16 @@ function recalcCycleTimePreview() {
   const allowance = parseFloat(document.getElementById('ct_allowance').value) || 0;
   const stdTime = avg > 0 ? avg + allowance : 0;
   const tactTime = stdTime / 60;
-  const capacity = stdTime > 0 ? 3600 / stdTime : 0;
+  const theoreticalCapacity = stdTime > 0 ? 3600 / stdTime : 0;
+  const planEff = parseFloat(document.getElementById('assign_ie_eff').value);
+  const capacity = theoreticalCapacity * ((isNaN(planEff) ? 100 : planEff) / 100);
   document.getElementById('ctPreviewAvg').textContent = avg.toFixed(2);
   document.getElementById('ctPreviewAllow').textContent = allowance.toFixed(2);
   document.getElementById('ctPreviewStd').textContent = stdTime.toFixed(2);
   document.getElementById('ctPreviewTact').textContent = tactTime.toFixed(3);
+  document.getElementById('ctPreviewTheoretical').textContent = Math.round(theoreticalCapacity);
   document.getElementById('ctPreviewCapacity').textContent = Math.round(capacity);
-  // Hourly Target is auto-filled from Capacity (the field is read-only)
+  // Hourly Target is auto-filled from Capacity (Theoretical × Plan Eff%) — the field is read-only
   document.getElementById('assign_hourly_target').value = capacity > 0 ? Math.round(capacity) : '';
 }
 
@@ -1596,7 +1595,10 @@ document.getElementById('assignForm').addEventListener('submit', async (e) => {
     const method = isAssignEditMode ? 'PUT' : 'POST';
     const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const result = await res.json();
-    if(result.success) { showToast(result.message); resetAssignForm(); loadAssignments(); loadLineStudy(); }
+    if(result.success) {
+      await saveLineStudy(true); // also save the Line Balancing planning fields sitting in this same form (silent — blank fields are fine)
+      showToast(result.message); resetAssignForm(); loadAssignments(); loadLineStudy();
+    }
     else showToast(result.message, 'error');
   } catch(err) { showToast('Operation failed', 'error'); }
 });
@@ -1612,6 +1614,7 @@ async function editAssignment(id) {
     document.getElementById('assign_style').value = matchingSheet.id;
     await populateOperationsLive();
   }
+  loadLineStudy(); // also pulls in this Line+Style's planning fields into the form
   document.getElementById('assign_process').value = row.operation_name;
   document.getElementById('assign_machine').value = row.machine_name || '';
   document.getElementById('assign_ie_eff').value = row.ie_eff_pct;
@@ -1666,6 +1669,23 @@ function getCurrentlyFilteredAssignments() {
   });
 }
 
+// When exactly one Line + one Style are picked in the filters, pulls that Line+Style's
+// Line Balancing Summary (planning fields + auto-calculated stats) so print/Excel can show
+// it as a header block above the operator table — same layout as the reference Excel sheet.
+// Returns null if the filters don't narrow down to a single Line+Style (nothing to show).
+async function getLineStudyForExport() {
+  const line = document.getElementById('filterAssignLine').value;
+  const style = document.getElementById('filterAssignStyle').value;
+  if (!line || !style) return null;
+  try {
+    const res = await apiFetch(`${BASE_URL}/api/line-study?line=${encodeURIComponent(line)}&style=${encodeURIComponent(style)}`);
+    const result = await res.json();
+    return result.success ? result.data : null;
+  } catch (err) { return null; }
+}
+
+function fmtDate(d) { return d ? d.split('T')[0] : ''; }
+
 function printAssignMatrix() {
   const data = getCurrentlyFilteredAssignments();
   if (data.length === 0) { showToast('Nothing to print — no rows match the current filters', 'error'); return; }
@@ -1685,40 +1705,73 @@ function printAssignMatrix() {
       <td style="text-align:center;">${row.capacity || '-'}</td>
     </tr>
   `).join('');
-  const html = `
-    <html><head><title>Line Operator Assignment - ${lineLabel}</title>
-    <style>
-      body { font-family: Arial, sans-serif; color:#1f2937; padding:24px; }
-      h1,h2,h3 { text-align:center; margin:2px 0; }
-      table { width:100%; border-collapse:collapse; margin-top:16px; }
-      th, td { border:1px solid #cbd5e1; padding:6px 8px; font-size:12px; }
-      th { background:#f1f5f9; }
-    </style></head>
-    <body onload="window.print()">
-      <h2>DEBONAIR PADDING AND QUILTING SOLUTION LIMITED</h2>
-      <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
-      <h3>LINE OPERATOR ASSIGNMENT — ${lineLabel}</h3>
-      <table>
-        <thead><tr><th>SL</th><th>Line</th><th>Office ID</th><th>Name</th><th>Designation</th><th>Style</th><th>Operation</th><th>Machine</th><th>IE EFF %</th><th>Std Time (s)</th><th>Capacity / Target</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </body></html>
-  `;
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
+
+  getLineStudyForExport().then(d => {
+    const summaryHtml = !d ? '' : `
+      <table style="margin-top:10px;">
+        <tbody>
+          <tr><td><b>Buyer</b></td><td>${d.buyer_name || '-'}</td><td><b>SMV</b></td><td>${d.smv}</td><td><b>No. of Worker</b></td><td>${d.no_of_worker}</td></tr>
+          <tr><td><b>Order Qty</b></td><td>${d.order_qty ?? ''}</td><td><b>Allocated Qty</b></td><td>${d.allocated_qty ?? ''}</td><td><b>TGT Hour</b></td><td>${d.tgt_hour ?? ''}</td></tr>
+          <tr><td><b>Input Date</b></td><td>${fmtDate(d.input_date)}</td><td><b>Output Date</b></td><td>${fmtDate(d.output_date)}</td><td><b>Graph Type</b></td><td>${d.graph_type ?? ''}</td></tr>
+          <tr><td><b>Per Hour Tgt</b></td><td>${d.per_hour_tgt ?? ''}</td><td><b>Current Pcs</b></td><td>${d.current_pcs ?? ''}</td><td><b>Acvd Effi %</b></td><td>${d.acvd_effi ?? ''}</td></tr>
+          <tr><td><b>DHU</b></td><td>${d.dhu ?? ''}</td><td><b>Observer Officer</b></td><td>${d.observer_officer ?? ''}</td><td><b>Tact Time</b></td><td>${d.tact_time}</td></tr>
+          <tr><td><b>Bpt</b></td><td>${d.bpt}</td><td><b>Hpt</b></td><td>${d.hpt}</td><td><b>Lpt</b></td><td>${d.lpt}</td></tr>
+          <tr><td><b>Worker Potential Pcs/hr</b></td><td>${d.worker_potential_pcs_hr}</td><td><b>Worker Potential Pcs/08hr</b></td><td>${d.worker_potential_pcs_08hr}</td><td><b>Per Process Need</b></td><td>${d.per_process_need}</td></tr>
+          <tr><td><b>Worker Perf %</b></td><td>${d.worker_perf_pct}%</td><td><b>Productivity Gap %</b></td><td>${d.productivity_gap_pct}%</td><td></td><td></td></tr>
+        </tbody>
+      </table>`;
+
+    const html = `
+      <html><head><title>Line Operator Assignment - ${lineLabel}</title>
+      <style>
+        body { font-family: Arial, sans-serif; color:#1f2937; padding:24px; }
+        h1,h2,h3 { text-align:center; margin:2px 0; }
+        table { width:100%; border-collapse:collapse; margin-top:16px; }
+        th, td { border:1px solid #cbd5e1; padding:6px 8px; font-size:12px; }
+        th { background:#f1f5f9; }
+      </style></head>
+      <body onload="window.print()">
+        <h2>DEBONAIR PADDING AND QUILTING SOLUTION LIMITED</h2>
+        <h3 style="font-weight:normal; font-size:13px;">BHALUKA, MYMENSINGH</h3>
+        <h3>LINE OPERATOR ASSIGNMENT — ${lineLabel}</h3>
+        ${summaryHtml}
+        <table>
+          <thead><tr><th>SL</th><th>Line</th><th>Office ID</th><th>Name</th><th>Designation</th><th>Style</th><th>Operation</th><th>Machine</th><th>Plan Eff %</th><th>Avg. Tact Time</th><th>Capacity / Target</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </body></html>
+    `;
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+  });
 }
 
-function downloadAssignMatrixExcel() {
+async function downloadAssignMatrixExcel() {
   const data = getCurrentlyFilteredAssignments();
   if (data.length === 0) { showToast('Nothing to download — no rows match the current filters', 'error'); return; }
   const lineLabel = document.getElementById('filterAssignLine').value || 'All_Lines';
+  const d = await getLineStudyForExport();
+
+  const summaryRows = !d ? [] : [
+    [],
+    ['Buyer', d.buyer_name || '', 'SMV', d.smv, 'No. of Worker', d.no_of_worker],
+    ['Order Qty', d.order_qty ?? '', 'Allocated Qty', d.allocated_qty ?? '', 'TGT Hour', d.tgt_hour ?? ''],
+    ['Input Date', fmtDate(d.input_date), 'Output Date', fmtDate(d.output_date), 'Graph Type', d.graph_type ?? ''],
+    ['Per Hour Tgt', d.per_hour_tgt ?? '', 'Current Pcs', d.current_pcs ?? '', 'Acvd Effi %', d.acvd_effi ?? ''],
+    ['DHU', d.dhu ?? '', 'Observer Officer', d.observer_officer ?? '', 'Tact Time', d.tact_time],
+    ['Bpt', d.bpt, 'Hpt', d.hpt, 'Lpt', d.lpt],
+    ['Worker Potential Pcs/hr', d.worker_potential_pcs_hr, 'Worker Potential Pcs/08hr', d.worker_potential_pcs_08hr, 'Per Process Need', d.per_process_need],
+    ['Worker Perf %', `${d.worker_perf_pct}%`, 'Productivity Gap %', `${d.productivity_gap_pct}%`],
+    []
+  ];
 
   const aoa = [
     ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
     ['BHALUKA, MYMENSINGH'],
     [`LINE OPERATOR ASSIGNMENT — ${lineLabel}`],
-    ['SL', 'Line', 'Office ID', 'Name', 'Designation', 'Style', 'Operation', 'Machine', 'IE EFF %', 'Std Time (s)', 'Capacity / Target (pcs/hr)'],
+    ...summaryRows,
+    ['SL', 'Line', 'Office ID', 'Name', 'Designation', 'Style', 'Operation', 'Machine', 'Plan Eff %', 'Avg. Tact Time', 'Capacity / Target (pcs/hr)'],
     ...data.map((row, i) => [i + 1, row.line_name, row.office_id, row.operator_name, row.designation || '', row.style_name, row.operation_name, row.machine_name || '', row.ie_eff_pct, row.std_time || '', row.capacity || ''])
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -1775,7 +1828,6 @@ async function loadLineStudy() {
     // what the user is actively typing if this reloads while they're mid-entry.
     document.getElementById('ls_orderQty').value = d.order_qty ?? '';
     document.getElementById('ls_allocatedQty').value = d.allocated_qty ?? '';
-    document.getElementById('ls_planEffi').value = d.plan_effi ?? '';
     document.getElementById('ls_inputDate').value = d.input_date ? d.input_date.split('T')[0] : '';
     document.getElementById('ls_outputDate').value = d.output_date ? d.output_date.split('T')[0] : '';
     document.getElementById('ls_graphType').value = d.graph_type ?? '';
@@ -1788,14 +1840,15 @@ async function loadLineStudy() {
   } catch (err) { showToast('Could not load line study summary', 'error'); }
 }
 
-async function saveLineStudy() {
+// Saves the Planning Details fields that now live inside the Assign Operator form (one set per Line+Style).
+// silent=true is used when this runs automatically right after "Add/Update Operator" — no separate toast then.
+async function saveLineStudy(silent = false) {
   const { line, style } = getAssignFormLineStyle();
-  if (!line || !style) { showToast('Select a Line and Style in the form above first', 'error'); return; }
+  if (!line || !style) { if (!silent) showToast('Select a Line and Style in the form above first', 'error'); return; }
 
   const payload = {
     order_qty: document.getElementById('ls_orderQty').value || null,
     allocated_qty: document.getElementById('ls_allocatedQty').value || null,
-    plan_effi: document.getElementById('ls_planEffi').value || null,
     input_date: document.getElementById('ls_inputDate').value || null,
     output_date: document.getElementById('ls_outputDate').value || null,
     graph_type: document.getElementById('ls_graphType').value || null,
@@ -1812,9 +1865,8 @@ async function saveLineStudy() {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
     });
     const result = await res.json();
-    if (result.success) { showToast(result.message); loadLineStudy(); }
-    else showToast(result.message, 'error');
-  } catch (err) { showToast('Save failed', 'error'); }
+    if (!silent) { if (result.success) { showToast(result.message); loadLineStudy(); } else showToast(result.message, 'error'); }
+  } catch (err) { if (!silent) showToast('Save failed', 'error'); }
 }
 
 // ---------------- OPERATOR CRUD ----------------
