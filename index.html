@@ -1541,7 +1541,7 @@ function recalcCycleTimePreview() {
   document.getElementById('ctPreviewTheoretical').textContent = Math.round(theoreticalCapacity);
   document.getElementById('ctPreviewCapacity').textContent = Math.round(capacity);
   // Hourly Target is auto-filled from Capacity (Theoretical × Plan Eff%) — the field is read-only
-  document.getElementById('assign_hourly_target').value = capacity > 0 ? Math.round(capacity) : '';
+  document.getElementById('assign_hourly_target').value = capacity > 0 ? Math.round(capacity).toFixed(0) : '';
 }
 
 async function loadAssignments() {
