@@ -601,7 +601,7 @@ app.get('/api/line-study', verifyToken, authorizeRoles('ADMIN', 'IE_PLANNING'), 
         const bpt = noOfWorker > 0 ? (tactTime / noOfWorker) * 60 : 0;
         const workerPotentialPcsHr = bpt > 0 ? 3600 / bpt : 0;
         const tgtHour = parseFloat(header.tgt_hour) || 0;
-        const workerPotentialPcs08hr = workerPotentialPcsHr * tgtHour;
+        const workerPotentialPcs08hr = workerPotentialPcsHr * 8; // fixed 8-hour shift (not the TGT Hour manual field)
         const hpt = bpt * 1.05;
         const lpt = bpt > 0 ? bpt / 1.05 : 0;
         const perHourTgt = parseFloat(header.per_hour_tgt) || 0;

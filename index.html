@@ -1253,7 +1253,7 @@ function renderStagingTable() {
     empty.style.display = 'none';
     tbody.innerHTML = obStagingRows.map((row, idx) => `
       <tr>
-        <td>${idx + 1}</td><td>${row.machine_name || '-'}</td><td>${row.gauge_guide || '-'}</td><td>${row.operation_name}</td><td>${row.frequency ?? '-'}</td><td>${row.smv.toFixed(2)}</td>
+        <td>${idx + 1}</td><td>${row.machine_name || '-'}</td><td>${row.gauge_guide || '-'}</td><td>${row.operation_name}</td><td>${row.frequency ?? '-'}</td><td>${row.smv.toFixed(3)}</td>
         <td><div class="action-btns"><button type="button" class="btn-sm btn-edit" onclick="editStagingRow(${idx})">Update</button><button type="button" class="btn-sm btn-delete" onclick="removeStagingRow(${idx})">Remove</button></div></td>
       </tr>
     `).join('');
@@ -1686,6 +1686,30 @@ async function getLineStudyForExport() {
 
 function fmtDate(d) { return d ? d.split('T')[0] : ''; }
 
+// Average Plan Efficiency % across this Line+Style's operators — shown in the two
+// "Plan Effi" grid cells (the reference sheet keeps one manual value there; ours is
+// now per-operator, so this is the average until/unless that's revisited).
+function avgPlanEffFromRows(rows) {
+  if (!rows || rows.length === 0) return '';
+  const sum = rows.reduce((s, r) => s + (parseFloat(r.ie_eff_pct) || 0), 0);
+  return round2ish(sum / rows.length);
+}
+function round2ish(n) { return Math.round(n * 100) / 100; }
+
+// Builds the 4-column × 7-row planning/summary grid, laid out exactly like the
+// reference Excel sheet (Buyer/Style/... | No. of worker/... | Dates/... | Worker Perf/...).
+function buildSummaryGridRows(d, planEffAvg) {
+  return [
+    ['Buyer', d.buyer_name || '', 'No. of worker', d.no_of_worker, 'Input Date', fmtDate(d.input_date), 'Worker Perf', `${d.worker_perf_pct}%`],
+    ['Style', d.style_name || '', 'Worker Potential Pcs/hr', d.worker_potential_pcs_hr, 'Output Date', fmtDate(d.output_date), 'Productivity Gap', `${d.productivity_gap_pct}%`],
+    ['Order Qty', d.order_qty ?? '', 'Worker Potential Pcs/08hr', d.worker_potential_pcs_08hr, 'Graph Type', d.graph_type ?? '', 'Planed Effi', planEffAvg !== '' ? `${planEffAvg}%` : ''],
+    ['Allocated Qty', d.allocated_qty ?? '', 'Current Pcs', d.current_pcs ?? '', 'Hpt', d.hpt, 'Acvd Effi', d.acvd_effi ?? ''],
+    ['Line', d.line_name || '', 'Tacct Time', d.tact_time, 'Lpt', d.lpt, 'DHU', d.dhu ?? ''],
+    ['SMV', d.smv, 'Bpt', d.bpt, 'TGT HOUR', d.tgt_hour ?? '', 'Observer Officer', d.observer_officer ?? ''],
+    ['Plan effi', planEffAvg !== '' ? `${planEffAvg}%` : '', 'Per Process Need', d.per_process_need, 'Per hour tgt', d.per_hour_tgt ?? '', '', '']
+  ];
+}
+
 function printAssignMatrix() {
   const data = getCurrentlyFilteredAssignments();
   if (data.length === 0) { showToast('Nothing to print — no rows match the current filters', 'error'); return; }
@@ -1707,19 +1731,17 @@ function printAssignMatrix() {
   `).join('');
 
   getLineStudyForExport().then(d => {
-    const summaryHtml = !d ? '' : `
-      <table style="margin-top:10px;">
-        <tbody>
-          <tr><td><b>Buyer</b></td><td>${d.buyer_name || '-'}</td><td><b>SMV</b></td><td>${d.smv}</td><td><b>No. of Worker</b></td><td>${d.no_of_worker}</td></tr>
-          <tr><td><b>Order Qty</b></td><td>${d.order_qty ?? ''}</td><td><b>Allocated Qty</b></td><td>${d.allocated_qty ?? ''}</td><td><b>TGT Hour</b></td><td>${d.tgt_hour ?? ''}</td></tr>
-          <tr><td><b>Input Date</b></td><td>${fmtDate(d.input_date)}</td><td><b>Output Date</b></td><td>${fmtDate(d.output_date)}</td><td><b>Graph Type</b></td><td>${d.graph_type ?? ''}</td></tr>
-          <tr><td><b>Per Hour Tgt</b></td><td>${d.per_hour_tgt ?? ''}</td><td><b>Current Pcs</b></td><td>${d.current_pcs ?? ''}</td><td><b>Acvd Effi %</b></td><td>${d.acvd_effi ?? ''}</td></tr>
-          <tr><td><b>DHU</b></td><td>${d.dhu ?? ''}</td><td><b>Observer Officer</b></td><td>${d.observer_officer ?? ''}</td><td><b>Tact Time</b></td><td>${d.tact_time}</td></tr>
-          <tr><td><b>Bpt</b></td><td>${d.bpt}</td><td><b>Hpt</b></td><td>${d.hpt}</td><td><b>Lpt</b></td><td>${d.lpt}</td></tr>
-          <tr><td><b>Worker Potential Pcs/hr</b></td><td>${d.worker_potential_pcs_hr}</td><td><b>Worker Potential Pcs/08hr</b></td><td>${d.worker_potential_pcs_08hr}</td><td><b>Per Process Need</b></td><td>${d.per_process_need}</td></tr>
-          <tr><td><b>Worker Perf %</b></td><td>${d.worker_perf_pct}%</td><td><b>Productivity Gap %</b></td><td>${d.productivity_gap_pct}%</td><td></td><td></td></tr>
-        </tbody>
-      </table>`;
+    let summaryHtml = '';
+    if (d) {
+      const planEffAvg = avgPlanEffFromRows(data);
+      const gridRows = buildSummaryGridRows(d, planEffAvg);
+      summaryHtml = `
+        <table style="margin-top:10px;">
+          <tbody>
+            ${gridRows.map(r => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td><b>${r[2]}</b></td><td>${r[3]}</td><td><b>${r[4]}</b></td><td>${r[5]}</td><td><b>${r[6]}</b></td><td>${r[7]}</td></tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
 
     const html = `
       <html><head><title>Line Operator Assignment - ${lineLabel}</title>
@@ -1753,18 +1775,11 @@ async function downloadAssignMatrixExcel() {
   const lineLabel = document.getElementById('filterAssignLine').value || 'All_Lines';
   const d = await getLineStudyForExport();
 
-  const summaryRows = !d ? [] : [
-    [],
-    ['Buyer', d.buyer_name || '', 'SMV', d.smv, 'No. of Worker', d.no_of_worker],
-    ['Order Qty', d.order_qty ?? '', 'Allocated Qty', d.allocated_qty ?? '', 'TGT Hour', d.tgt_hour ?? ''],
-    ['Input Date', fmtDate(d.input_date), 'Output Date', fmtDate(d.output_date), 'Graph Type', d.graph_type ?? ''],
-    ['Per Hour Tgt', d.per_hour_tgt ?? '', 'Current Pcs', d.current_pcs ?? '', 'Acvd Effi %', d.acvd_effi ?? ''],
-    ['DHU', d.dhu ?? '', 'Observer Officer', d.observer_officer ?? '', 'Tact Time', d.tact_time],
-    ['Bpt', d.bpt, 'Hpt', d.hpt, 'Lpt', d.lpt],
-    ['Worker Potential Pcs/hr', d.worker_potential_pcs_hr, 'Worker Potential Pcs/08hr', d.worker_potential_pcs_08hr, 'Per Process Need', d.per_process_need],
-    ['Worker Perf %', `${d.worker_perf_pct}%`, 'Productivity Gap %', `${d.productivity_gap_pct}%`],
-    []
-  ];
+  let summaryRows = [];
+  if (d) {
+    const planEffAvg = avgPlanEffFromRows(data);
+    summaryRows = [[], ...buildSummaryGridRows(d, planEffAvg), []];
+  }
 
   const aoa = [
     ['DEBONAIR PADDING AND QUILTING SOLUTION LIMITED'],
